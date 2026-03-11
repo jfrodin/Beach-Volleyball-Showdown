@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Beach Volleyball Showdown</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="gameCanvas" width="900" height="550"></canvas>
+    <div id="ui-overlay">
+      <div id="screen-start" class="screen active">
+        <div class="title-card">
+          <h1>🏐 Beach Volleyball</h1>
+          <h2>Showdown</h2>
+          <div class="controls-grid">
+            <div class="player-controls p1">
+              <h3>Player 1</h3>
+              <p><kbd>A</kbd><kbd>D</kbd> Move</p>
+              <p><kbd>W</kbd> Jump / Hit</p>
+            </div>
+            <div class="vs-badge">VS</div>
+            <div class="player-controls p2">
+              <h3>Player 2</h3>
+              <p><kbd>←</kbd><kbd>→</kbd> Move</p>
+              <p><kbd>↑</kbd> Jump / Hit</p>
+            </div>
+          </div>
+          <p class="subtitle">First to <strong>7 points</strong> wins the set · Best of 3</p>
+          <button id="btn-start" class="btn-primary">SERVE!</button>
+        </div>
+      </div>
+
+      <div id="screen-game" class="screen">
+        <div id="hud">
+          <div class="score-panel p1-score">
+            <span class="player-label">P1</span>
+            <span class="score-val" id="score-p1">0</span>
+            <div class="set-dots" id="sets-p1"></div>
+          </div>
+          <div class="set-info">
+            <span id="set-label">Set 1</span>
+          </div>
+          <div class="score-panel p2-score">
+            <div class="set-dots" id="sets-p2"></div>
+            <span class="score-val" id="score-p2">0</span>
+            <span class="player-label">P2</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="screen-point" class="screen">
+        <div class="point-card">
+          <div id="point-message"></div>
+          <div id="point-sub"></div>
+        </div>
+      </div>
+
+      <div id="screen-gameover" class="screen">
+        <div class="gameover-card">
+          <div id="winner-text"></div>
+          <div id="final-score"></div>
+          <button id="btn-restart" class="btn-primary">PLAY AGAIN</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="game.js"></script>
+</body>
+</html>
