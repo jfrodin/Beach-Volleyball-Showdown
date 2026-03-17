@@ -9,15 +9,17 @@ const W = canvas.width;   // 900
 const H = canvas.height;  // 550
 
 // ── Layout constants ─────────────────────────────────────────
-const GROUND_Y   = H - 80;   // sand surface
-const NET_X      = W / 2;
-const NET_H      = 120;
-const NET_TOP_Y  = GROUND_Y - NET_H;
-const GRAVITY    = 0.45;
-const JUMP_VY    = -12;
-const PLAYER_SPD = 4.5;
-const BALL_R     = 14;
-const PLAYER_R   = 22;
+const GROUND_Y    = H - 80;   // sand surface
+const NET_X       = W / 2;
+const NET_H       = 120;
+const NET_TOP_Y   = GROUND_Y - NET_H;
+const COURT_LEFT  = 140;      // left sideline (ball going past = out)
+const COURT_RIGHT = W - 140;  // right sideline
+const GRAVITY     = 0.45;
+const JUMP_VY     = -12;
+const PLAYER_SPD  = 4.5;
+const BALL_R      = 14;
+const PLAYER_R    = 22;
 
 // ── Colour palette ───────────────────────────────────────────
 const PALETTE = {
@@ -251,9 +253,9 @@ function update() {
       p.vy = 0;
       p.onGround = true;
     }
-    // Side walls
-    p.x = Math.max(PLAYER_R, Math.min(W - PLAYER_R, p.x));
-    // Net collision: keep players on their side
+    // Court sideline bounds (players stay within the court)
+    p.x = Math.max(COURT_LEFT + PLAYER_R, Math.min(COURT_RIGHT - PLAYER_R, p.x));
+    // Net: keep players on their side
     if (p.side === 1) p.x = Math.min(NET_X - PLAYER_R - 5, p.x);
     if (p.side === 2) p.x = Math.max(NET_X + PLAYER_R + 5, p.x);
     // Cooldowns
@@ -273,17 +275,14 @@ function update() {
     ball.trailPoints.push({ x: ball.x, y: ball.y });
     if (ball.trailPoints.length > 8) ball.trailPoints.shift();
 
-    // Net collision
-    if (ball.x > NET_X - 8 && ball.x < NET_X + 8 && ball.y > NET_TOP_Y && ball.y < GROUND_Y) {
-      ball.vx *= -0.6;
-      ball.x = ball.vx > 0 ? NET_X + 9 : NET_X - 9;
-      ball.vy *= 0.5;
-      spawnParticles(ball.x, ball.y, 5, 'rgba(255,255,255,0.6)');
+    // Net collision — matches the 18px visual strip
+    const NET_HALF_COL = 18;
+    if (ball.x > NET_X - NET_HALF_COL && ball.x < NET_X + NET_HALF_COL && ball.y > NET_TOP_Y && ball.y < GROUND_Y) {
+      ball.vx *= -0.55;
+      ball.vy *= 0.45;
+      ball.x = ball.vx > 0 ? NET_X + NET_HALF_COL + 1 : NET_X - NET_HALF_COL - 1;
+      spawnParticles(ball.x, ball.y, 6, 'rgba(255,255,255,0.7)');
     }
-
-    // Side walls
-    if (ball.x < BALL_R) { ball.x = BALL_R; ball.vx = Math.abs(ball.vx) * 0.7; }
-    if (ball.x > W - BALL_R) { ball.x = W - BALL_R; ball.vx = -Math.abs(ball.vx) * 0.7; }
 
     // Player hit detection
     [p1, p2].forEach(p => {
@@ -293,15 +292,17 @@ function update() {
       }
     });
 
-    // Ground — point scored!
+    // Ball lands — check in bounds vs out of bounds
     if (ball.y > GROUND_Y - BALL_R) {
       ball.y = GROUND_Y - BALL_R;
-      if (ball.x < NET_X) {
-        // Landed on P1's side → P2 scores
-        awardPoint(2);
+      if (ball.x < COURT_LEFT || ball.x > COURT_RIGHT) {
+        // Out of bounds — whoever last hit it loses the point
+        const hitter = ball.lastHit;
+        awardPoint(hitter === 1 ? 2 : 1);
+      } else if (ball.x < NET_X) {
+        awardPoint(2); // landed on P1's side
       } else {
-        // Landed on P2's side → P1 scores
-        awardPoint(1);
+        awardPoint(1); // landed on P2's side
       }
     }
   } else {
@@ -545,6 +546,68 @@ function drawBackground() {
   ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(0, GROUND_Y); ctx.lineTo(W, GROUND_Y); ctx.stroke();
   ctx.restore();
+
+  // Outside-court sand (slightly darker, shows the out-of-bounds area)
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.fillRect(0, GROUND_Y, COURT_LEFT, H - GROUND_Y);
+  ctx.fillRect(COURT_RIGHT, GROUND_Y, W - COURT_RIGHT, H - GROUND_Y);
+  ctx.restore();
+
+  // Player zone tint — subtle blue (P1) and red (P2) inside court only
+  ctx.save();
+  ctx.globalAlpha = 0.08;
+  ctx.fillStyle = '#4682B4';
+  ctx.fillRect(COURT_LEFT, GROUND_Y, NET_X - COURT_LEFT, H - GROUND_Y);
+  ctx.fillStyle = '#CC3333';
+  ctx.fillRect(NET_X, GROUND_Y, COURT_RIGHT - NET_X, H - GROUND_Y);
+  ctx.restore();
+
+  // Sideline flags / poles
+  function drawSidelineFlag(fx) {
+    ctx.save();
+    ctx.fillStyle = '#8B4513';
+    ctx.fillRect(fx - 2, GROUND_Y - 40, 4, 40);
+    ctx.fillStyle = '#FFD700';
+    ctx.beginPath();
+    ctx.moveTo(fx + 2, GROUND_Y - 40);
+    ctx.lineTo(fx + 18, GROUND_Y - 32);
+    ctx.lineTo(fx + 2, GROUND_Y - 24);
+    ctx.fill();
+    ctx.restore();
+  }
+  drawSidelineFlag(COURT_LEFT);
+  drawSidelineFlag(COURT_RIGHT);
+
+  // Court boundary lines
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  // Sidelines (vertical)
+  ctx.beginPath(); ctx.moveTo(COURT_LEFT, GROUND_Y); ctx.lineTo(COURT_LEFT, H - 6); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(COURT_RIGHT, GROUND_Y); ctx.lineTo(COURT_RIGHT, H - 6); ctx.stroke();
+  // End lines (horizontal bottom)
+  ctx.beginPath(); ctx.moveTo(COURT_LEFT, H - 6); ctx.lineTo(NET_X, H - 6); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(NET_X, H - 6); ctx.lineTo(COURT_RIGHT, H - 6); ctx.stroke();
+  // Attack lines (3m marker, dashed)
+  const attackOff = (NET_X - COURT_LEFT) * 0.38;
+  ctx.setLineDash([8, 6]);
+  ctx.globalAlpha = 0.5;
+  ctx.beginPath(); ctx.moveTo(NET_X - attackOff, GROUND_Y); ctx.lineTo(NET_X - attackOff, H - 6); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(NET_X + attackOff, GROUND_Y); ctx.lineTo(NET_X + attackOff, H - 6); ctx.stroke();
+  ctx.restore();
+
+  // Side labels
+  ctx.save();
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.globalAlpha = 0.28;
+  ctx.fillStyle = '#6EA8FF';
+  ctx.fillText('P1', (COURT_LEFT + NET_X) / 2, GROUND_Y + 20);
+  ctx.fillStyle = '#FF7070';
+  ctx.fillText('P2', (NET_X + COURT_RIGHT) / 2, GROUND_Y + 20);
+  ctx.restore();
 }
 
 function drawCloud(x, y, w) {
@@ -557,80 +620,68 @@ function drawCloud(x, y, w) {
 }
 
 function drawNet() {
-  const poleW = 8;
-  const poleH = NET_H + 20;
+  const netHalf = 18;
+  const netLeft  = NET_X - netHalf;
+  const netRight = NET_X + netHalf;
+  const poleW    = 9;
+  const poleTop  = GROUND_Y - NET_H - 16;
 
-  // Left pole
   ctx.save();
-  const poleGrad = ctx.createLinearGradient(NET_X - NET_H*1.3 - poleW, 0, NET_X - NET_H*1.3 + poleW, 0);
-  poleGrad.addColorStop(0, '#5a2d00');
-  poleGrad.addColorStop(0.5, '#a0522d');
-  poleGrad.addColorStop(1, '#5a2d00');
-  ctx.fillStyle = poleGrad;
-  const lp = NET_X - 200;
-  ctx.fillRect(lp - poleW/2, GROUND_Y - poleH, poleW, poleH);
-  ctx.fillStyle = '#c0703a';
-  ctx.fillRect(lp - poleW/2 - 3, GROUND_Y - poleH - 6, poleW + 6, 10);
 
-  // Right pole
-  const rp = NET_X + 200;
-  ctx.fillStyle = poleGrad;
-  ctx.fillRect(rp - poleW/2, GROUND_Y - poleH, poleW, poleH);
-  ctx.fillStyle = '#c0703a';
-  ctx.fillRect(rp - poleW/2 - 3, GROUND_Y - poleH - 6, poleW + 6, 10);
-  ctx.restore();
+  // ── Poles (metal, silver) ───────────────────────────────────
+  function drawPole(px) {
+    const g = ctx.createLinearGradient(px - poleW, 0, px + poleW, 0);
+    g.addColorStop(0,   '#555');
+    g.addColorStop(0.3, '#ccc');
+    g.addColorStop(0.6, '#eee');
+    g.addColorStop(1,   '#666');
+    ctx.fillStyle = g;
+    ctx.fillRect(px - poleW/2, poleTop, poleW, GROUND_Y - poleTop);
+    // Cap
+    ctx.fillStyle = '#bbb';
+    ctx.beginPath();
+    ctx.roundRect(px - poleW/2 - 1, poleTop - 4, poleW + 2, 8, 2);
+    ctx.fill();
+  }
+  drawPole(netLeft  - poleW/2);
+  drawPole(netRight + poleW/2);
 
-  // Shadow under net top rope
-  ctx.save();
-  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
-  ctx.lineWidth = 12;
-  ctx.beginPath();
-  ctx.moveTo(lp, NET_TOP_Y + 4);
-  ctx.lineTo(rp, NET_TOP_Y + 4);
-  ctx.stroke();
-  ctx.restore();
+  // ── Net body shadow ─────────────────────────────────────────
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.fillRect(netLeft + 3, NET_TOP_Y + 3, netHalf * 2, NET_H);
 
-  // Net grid
-  ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  // ── Net background ──────────────────────────────────────────
+  ctx.fillStyle = 'rgba(20,40,80,0.65)';
+  ctx.fillRect(netLeft, NET_TOP_Y, netHalf * 2, NET_H);
+
+  // Horizontal ropes
+  ctx.strokeStyle = 'rgba(200,220,255,0.5)';
   ctx.lineWidth = 1;
-  const netLeft = lp;
-  const netRight = rp;
-  const netW = netRight - netLeft;
-  const cols = 14;
-  const rows = 7;
-  for (let c = 0; c <= cols; c++) {
-    const nx = netLeft + (c / cols) * netW;
-    ctx.globalAlpha = 0.5;
-    ctx.beginPath();
-    ctx.moveTo(nx, NET_TOP_Y);
-    ctx.lineTo(nx, GROUND_Y);
-    ctx.stroke();
-  }
-  for (let r = 0; r <= rows; r++) {
-    const ny = NET_TOP_Y + (r / rows) * NET_H;
-    ctx.globalAlpha = 0.5;
-    ctx.beginPath();
-    ctx.moveTo(netLeft, ny);
-    ctx.lineTo(netRight, ny);
-    ctx.stroke();
+  const rowCount = 8;
+  for (let r = 0; r <= rowCount; r++) {
+    const ny = NET_TOP_Y + (r / rowCount) * NET_H;
+    ctx.globalAlpha = 0.65;
+    ctx.beginPath(); ctx.moveTo(netLeft, ny); ctx.lineTo(netRight, ny); ctx.stroke();
   }
 
-  // Top tape (white/blue alternating)
-  const tapeH = 8;
-  const segments = 10;
-  for (let i = 0; i < segments; i++) {
-    const tx = netLeft + (i / segments) * netW;
-    const tw = netW / segments;
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = i % 2 === 0 ? '#ffffff' : '#3377CC';
+  // Vertical center rope
+  ctx.globalAlpha = 0.3;
+  ctx.beginPath(); ctx.moveTo(NET_X, NET_TOP_Y); ctx.lineTo(NET_X, GROUND_Y); ctx.stroke();
+
+  // ── Bottom white band ───────────────────────────────────────
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#ddd';
+  ctx.fillRect(netLeft, GROUND_Y - 8, netHalf * 2, 8);
+
+  // ── Top tape (white / blue) ─────────────────────────────────
+  const tapeH = 10;
+  const segs  = 5;
+  for (let i = 0; i < segs; i++) {
+    const tx = netLeft + (i / segs) * (netHalf * 2);
+    const tw = (netHalf * 2) / segs;
+    ctx.fillStyle = i % 2 === 0 ? '#ffffff' : '#1a5bbf';
     ctx.fillRect(tx, NET_TOP_Y - tapeH / 2, tw, tapeH);
   }
-
-  // Bottom tape
-  ctx.fillStyle = '#ffffff';
-  ctx.globalAlpha = 0.8;
-  ctx.fillRect(netLeft, GROUND_Y - 6, netW, 6);
 
   ctx.restore();
 }
