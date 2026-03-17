@@ -1060,7 +1060,8 @@ function initOnlineMode(role) {
 // ── Online: lobby UI ─────────────────────────────────────────
 function getSocket() {
   if (!netSocket) {
-    netSocket = io();
+    // Works on localhost and on any hosted server (Railway, Render, etc.)
+    netSocket = io(window.location.origin);
     netSocket.on('opponent-left', () => {
       onlineMode = null;
       netSocket = null;
