@@ -31,6 +31,7 @@
           <div class="start-btn-row">
             <button id="btn-start" class="btn-primary">LOCAL PLAY</button>
             <button id="btn-online" class="btn-secondary">ONLINE</button>
+            <button id="btn-stats" class="btn-secondary">STATS</button>
           </div>
         </div>
       </div>
@@ -48,6 +49,32 @@
           </div>
           <div id="online-status"></div>
           <button id="btn-back-local" class="btn-back">← Back</button>
+        </div>
+      </div>
+
+      <!-- CUSTOMIZE SCREEN -->
+      <div id="screen-customize" class="screen">
+        <div class="customize-card">
+          <h2 class="customize-title">CUSTOMIZE PLAYERS</h2>
+          <div class="customize-panels" id="customize-panels">
+            <!-- Panels injected by JS -->
+          </div>
+          <button id="btn-start-game" class="btn-primary" style="margin-top:28px;padding:14px 60px">START GAME</button>
+          <button id="btn-back-customize" class="btn-back">← Back</button>
+        </div>
+      </div>
+
+      <!-- STATS SCREEN -->
+      <div id="screen-stats" class="screen">
+        <div class="stats-card">
+          <h2 class="stats-title">STATISTICS</h2>
+          <div class="stats-panels" id="stats-panels">
+            <!-- Injected by JS -->
+          </div>
+          <div style="display:flex;gap:14px;justify-content:center;margin-top:28px;flex-wrap:wrap">
+            <button id="btn-reset-stats" class="btn-secondary">RESET STATS</button>
+            <button id="btn-back-stats" class="btn-back" style="margin-top:0">← Back</button>
+          </div>
         </div>
       </div>
 

@@ -4,7 +4,8 @@
       "Bash(open /Users/joakimfrodin/Repo/Privat/game/index.html)",
       "Bash(open \"/Users/joakimfrodin/Repo/Privat/Beach Volleyball Showdown/index.html\")",
       "Bash(npm install:*)",
-      "Bash(open http://localhost:3000)"
+      "Bash(open http://localhost:3000)",
+      "Bash(node --check \"/Users/joakimfrodin/Repo/Privat/Beach Volleyball Showdown/game.js\")"
     ]
   }
 }

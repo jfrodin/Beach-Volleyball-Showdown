@@ -5,8 +5,8 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-const W = canvas.width;   // 900
-const H = canvas.height;  // 550
+const W = canvas.width;   // 1350
+const H = canvas.height;  // 600
 
 // ── Layout constants ─────────────────────────────────────────
 const GROUND_Y    = H - 80;   // sand surface
@@ -31,6 +31,7 @@ const PALETTE = {
   netPole:   '#8B4513',
   netLine:   'rgba(255,255,255,0.9)',
   netShadow: 'rgba(0,0,0,0.3)',
+  // defaults (overridden by playerColors)
   p1Body:    '#4682B4',
   p1Skin:    '#FFDAB9',
   p1Hair:    '#2C3E50',
@@ -42,8 +43,80 @@ const PALETTE = {
   shadow:    'rgba(0,0,0,0.25)',
 };
 
+// ── Customization presets ────────────────────────────────────
+const SKIN_PRESETS   = ['#FFDAB9','#D4956A','#A0522D','#6B3A2A','#8B7355','#F4A7B9'];
+const HAIR_PRESETS   = ['#1a1a1a','#6B3A2A','#D4A843','#A0200F','#C0C0C0','#3355AA'];
+const OUTFIT_PRESETS = ['#4682B4','#CC3333','#2E8B57','#6A1E9A','#D4620A','#1A9090'];
+
+// ── Player colors (live, read by drawPlayer) ─────────────────
+let playerColors = {
+  p1: { skin: PALETTE.p1Skin, hair: PALETTE.p1Hair, body: PALETTE.p1Body },
+  p2: { skin: PALETTE.p2Skin, hair: PALETTE.p2Hair, body: PALETTE.p2Body },
+};
+
+function loadPlayerColors() {
+  const p1skin   = localStorage.getItem('p1_skin');
+  const p1hair   = localStorage.getItem('p1_hair');
+  const p1outfit = localStorage.getItem('p1_outfit');
+  const p2skin   = localStorage.getItem('p2_skin');
+  const p2hair   = localStorage.getItem('p2_hair');
+  const p2outfit = localStorage.getItem('p2_outfit');
+  if (p1skin)   playerColors.p1.skin = p1skin;
+  if (p1hair)   playerColors.p1.hair = p1hair;
+  if (p1outfit) playerColors.p1.body = p1outfit;
+  if (p2skin)   playerColors.p2.skin = p2skin;
+  if (p2hair)   playerColors.p2.hair = p2hair;
+  if (p2outfit) playerColors.p2.body = p2outfit;
+}
+
+function savePlayerColors() {
+  localStorage.setItem('p1_skin',   playerColors.p1.skin);
+  localStorage.setItem('p1_hair',   playerColors.p1.hair);
+  localStorage.setItem('p1_outfit', playerColors.p1.body);
+  localStorage.setItem('p2_skin',   playerColors.p2.skin);
+  localStorage.setItem('p2_hair',   playerColors.p2.hair);
+  localStorage.setItem('p2_outfit', playerColors.p2.body);
+}
+
+// ── Stats ─────────────────────────────────────────────────────
+function defaultStats() {
+  return { wins: 0, losses: 0, setsWon: 0, setsLost: 0, pointsScored: 0 };
+}
+
+function loadStats(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? Object.assign(defaultStats(), JSON.parse(raw)) : defaultStats();
+  } catch { return defaultStats(); }
+}
+
+function saveStats(key, stats) {
+  localStorage.setItem(key, JSON.stringify(stats));
+}
+
+function recordGameStats(winner) {
+  // winner = 1 or 2
+  const s1 = loadStats('stats_p1');
+  const s2 = loadStats('stats_p2');
+
+  if (winner === 1) {
+    s1.wins++;    s1.setsWon   += setsP1; s1.setsLost  += setsP2;
+    s2.losses++;  s2.setsWon   += setsP2; s2.setsLost  += setsP1;
+  } else {
+    s2.wins++;    s2.setsWon   += setsP2; s2.setsLost  += setsP1;
+    s1.losses++;  s1.setsWon   += setsP1; s1.setsLost  += setsP2;
+  }
+  // points scored across the whole game — we track final set scores
+  // by adding the per-set points at game end (scoreP1/scoreP2 hold last set's pts)
+  s1.pointsScored += scoreP1;
+  s2.pointsScored += scoreP2;
+
+  saveStats('stats_p1', s1);
+  saveStats('stats_p2', s2);
+}
+
 // ── State ─────────────────────────────────────────────────────
-let state = 'start';   // start | playing | point | gameover
+let state = 'start';   // start | customize | stats | playing | point | gameover
 let scoreP1 = 0, scoreP2 = 0;
 let setsP1 = 0, setsP2 = 0;
 let currentSet = 1;
@@ -55,6 +128,9 @@ let particles = [];
 let clouds = [];
 let seagulls = [];
 let bgTime = 0;
+
+// Tracks where we came from when entering customize (for back-button routing)
+let customizeOrigin = 'local'; // 'local' | 'online'
 
 const keys = {};
 
@@ -162,7 +238,7 @@ function showScreen(name) {
 document.addEventListener('keydown', e => {
   keys[e.code] = true;
   if (state === 'playing') {
-    if (onlineMode === 'guest') return; // guest sends keys via socket, host applies them
+    if (onlineMode === 'guest') return;
     if (e.code === 'KeyW' && p1.onGround) { p1.vy = JUMP_VY; p1.onGround = false; }
     if (!onlineMode && e.code === 'ArrowUp' && p2.onGround) { p2.vy = JUMP_VY; p2.onGround = false; }
     if (!ball.served) {
@@ -173,16 +249,294 @@ document.addEventListener('keydown', e => {
 });
 document.addEventListener('keyup', e => { keys[e.code] = false; });
 
-document.getElementById('btn-start').addEventListener('click', startGame);
+// ── Button wiring ─────────────────────────────────────────────
+document.getElementById('btn-start').addEventListener('click', () => {
+  customizeOrigin = 'local';
+  openCustomize();
+});
+
 document.getElementById('btn-restart').addEventListener('click', () => {
-  resetGame();
-  startGame();
+  customizeOrigin = 'local';
+  openCustomize();
+});
+
+document.getElementById('btn-stats').addEventListener('click', openStats);
+document.getElementById('btn-back-stats').addEventListener('click', () => showScreen('start'));
+document.getElementById('btn-reset-stats').addEventListener('click', () => {
+  saveStats('stats_p1', defaultStats());
+  saveStats('stats_p2', defaultStats());
+  renderStats();
+});
+
+// Customize back button
+document.getElementById('btn-back-customize').addEventListener('click', () => {
+  if (customizeOrigin === 'online') {
+    showScreen('online');
+  } else {
+    showScreen('start');
+  }
+});
+
+// Start game from customize screen
+document.getElementById('btn-start-game').addEventListener('click', () => {
+  savePlayerColors();
+  if (customizeOrigin === 'online') {
+    // Hand off to online flow — caller (initOnlineMode) already set things up
+    // so we just start the game
+    resetGame();
+    startGame();
+  } else {
+    onlineMode = null;
+    resetGame();
+    startGame();
+  }
 });
 
 function startGame() {
   state = 'playing';
   showScreen('game');
   updateHUD();
+}
+
+// ── Customize screen ─────────────────────────────────────────
+function openCustomize() {
+  renderCustomize();
+  showScreen('customize');
+}
+
+function renderCustomize() {
+  const panelsEl = document.getElementById('customize-panels');
+  panelsEl.innerHTML = '';
+
+  const isOnlineGuest = onlineMode === 'guest';
+  // In online mode as guest we only show local player panel (P2 = guest)
+  // In host or local we show both panels
+  const playersToShow = isOnlineGuest ? [2] : [1, 2];
+
+  playersToShow.forEach(playerNum => {
+    const pKey = `p${playerNum}`;
+    const panel = document.createElement('div');
+    panel.className = `customize-panel ${pKey}-panel`;
+    panel.id = `customize-panel-${pKey}`;
+
+    const title = isOnlineGuest
+      ? 'YOUR PLAYER'
+      : (playerNum === 1 ? 'PLAYER 1' : 'PLAYER 2');
+
+    panel.innerHTML = `
+      <h3>${title}</h3>
+      <canvas class="customize-avatar" id="avatar-${pKey}" width="80" height="90"></canvas>
+      <div class="color-section">
+        <div class="color-section-label">Skin Color</div>
+        <div class="swatch-row" id="${pKey}-skin-swatches"></div>
+      </div>
+      <div class="color-section">
+        <div class="color-section-label">Hair Color</div>
+        <div class="swatch-row" id="${pKey}-hair-swatches"></div>
+      </div>
+      <div class="color-section">
+        <div class="color-section-label">Outfit Color</div>
+        <div class="swatch-row" id="${pKey}-outfit-swatches"></div>
+      </div>
+    `;
+    panelsEl.appendChild(panel);
+
+    buildSwatchRow(`${pKey}-skin-swatches`,   SKIN_PRESETS,   pKey, 'skin');
+    buildSwatchRow(`${pKey}-hair-swatches`,   HAIR_PRESETS,   pKey, 'hair');
+    buildSwatchRow(`${pKey}-outfit-swatches`, OUTFIT_PRESETS, pKey, 'body');
+    drawAvatarPreview(pKey);
+  });
+}
+
+function buildSwatchRow(containerId, presets, pKey, colorProp) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '';
+  presets.forEach(color => {
+    const sw = document.createElement('div');
+    sw.className = 'swatch' + (playerColors[pKey][colorProp] === color ? ' selected' : '');
+    sw.style.background = color;
+    sw.title = color;
+    sw.addEventListener('click', () => {
+      playerColors[pKey][colorProp] = color;
+      // Update selected state in this row
+      container.querySelectorAll('.swatch').forEach(s => s.classList.remove('selected'));
+      sw.classList.add('selected');
+      drawAvatarPreview(pKey);
+      // If online host, broadcast color choice to guest
+      if (onlineMode === 'host' && netSocket) {
+        netSocket.emit('colors', { playerColors });
+      }
+    });
+    container.appendChild(sw);
+  });
+}
+
+function drawAvatarPreview(pKey) {
+  const cvs = document.getElementById(`avatar-${pKey}`);
+  if (!cvs) return;
+  const c = cvs.getContext('2d');
+  const cw = cvs.width, ch = cvs.height;
+  c.clearRect(0, 0, cw, ch);
+
+  const col = playerColors[pKey];
+  const cx = cw / 2;
+  const baseY = ch - 12; // feet level
+
+  // Legs
+  c.strokeStyle = col.skin;
+  c.lineWidth = 5;
+  c.lineCap = 'round';
+  c.beginPath(); c.moveTo(cx - 7, baseY - 28); c.lineTo(cx - 9, baseY); c.stroke();
+  c.beginPath(); c.moveTo(cx + 7, baseY - 28); c.lineTo(cx + 9, baseY); c.stroke();
+
+  // Shorts / body
+  c.fillStyle = col.body;
+  c.fillRect(cx - 10, baseY - 40, 20, 14);
+  c.beginPath();
+  if (c.roundRect) {
+    c.roundRect(cx - 10, baseY - 58, 20, 20, 3);
+  } else {
+    c.rect(cx - 10, baseY - 58, 20, 20);
+  }
+  c.fill();
+
+  // Number on shirt
+  c.fillStyle = 'rgba(255,255,255,0.7)';
+  c.font = 'bold 9px sans-serif';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText(pKey === 'p1' ? '1' : '2', cx, baseY - 48);
+
+  // Arms
+  c.strokeStyle = col.skin;
+  c.lineWidth = 4;
+  c.beginPath(); c.moveTo(cx - 10, baseY - 55); c.lineTo(cx - 18, baseY - 42); c.stroke();
+  c.beginPath(); c.moveTo(cx + 10, baseY - 55); c.lineTo(cx + 18, baseY - 42); c.stroke();
+
+  // Head
+  c.fillStyle = col.skin;
+  c.beginPath();
+  c.arc(cx, baseY - 70, 11, 0, Math.PI * 2);
+  c.fill();
+
+  // Hair
+  c.fillStyle = col.hair;
+  c.beginPath();
+  c.ellipse(cx, baseY - 76, 9, 7, 0, Math.PI, 0);
+  c.fill();
+
+  // Eye
+  c.fillStyle = '#333';
+  c.beginPath();
+  c.arc(cx + 3, baseY - 70, 1.5, 0, Math.PI * 2);
+  c.fill();
+}
+
+// ── Stats screen ──────────────────────────────────────────────
+function openStats() {
+  renderStats();
+  showScreen('stats');
+}
+
+function renderStats() {
+  const panelsEl = document.getElementById('stats-panels');
+  panelsEl.innerHTML = '';
+
+  [1, 2].forEach(playerNum => {
+    const pKey = `p${playerNum}`;
+    const stats = loadStats(`stats_${pKey}`);
+
+    const panel = document.createElement('div');
+    panel.className = `stats-panel ${pKey}-stats`;
+
+    const wl = stats.wins + stats.losses > 0
+      ? ((stats.wins / (stats.wins + stats.losses)) * 100).toFixed(0) + '%'
+      : '—';
+
+    panel.innerHTML = `
+      <h3>Player ${playerNum}</h3>
+      <canvas class="stats-avatar" id="stats-avatar-${pKey}" width="72" height="82"></canvas>
+      <div class="stats-row">
+        <span class="stats-label">Wins</span>
+        <span class="stats-value">${stats.wins}</span>
+      </div>
+      <div class="stats-row">
+        <span class="stats-label">Losses</span>
+        <span class="stats-value">${stats.losses}</span>
+      </div>
+      <div class="stats-row">
+        <span class="stats-label">Win %</span>
+        <span class="stats-value" style="font-size:1.1rem">${wl}</span>
+      </div>
+      <div class="stats-row">
+        <span class="stats-label">Sets Won</span>
+        <span class="stats-value">${stats.setsWon}</span>
+      </div>
+      <div class="stats-row">
+        <span class="stats-label">Sets Lost</span>
+        <span class="stats-value">${stats.setsLost}</span>
+      </div>
+      <div class="stats-row">
+        <span class="stats-label">Points</span>
+        <span class="stats-value">${stats.pointsScored}</span>
+      </div>
+    `;
+    panelsEl.appendChild(panel);
+
+    // Draw the mini-avatar with current colors
+    drawStatsAvatar(pKey);
+  });
+}
+
+function drawStatsAvatar(pKey) {
+  const cvs = document.getElementById(`stats-avatar-${pKey}`);
+  if (!cvs) return;
+  const c = cvs.getContext('2d');
+  const cw = cvs.width, ch = cvs.height;
+  c.clearRect(0, 0, cw, ch);
+
+  const col = playerColors[pKey];
+  const cx = cw / 2;
+  const baseY = ch - 10;
+
+  c.strokeStyle = col.skin;
+  c.lineWidth = 5;
+  c.lineCap = 'round';
+  c.beginPath(); c.moveTo(cx - 6, baseY - 26); c.lineTo(cx - 8, baseY); c.stroke();
+  c.beginPath(); c.moveTo(cx + 6, baseY - 26); c.lineTo(cx + 8, baseY); c.stroke();
+
+  c.fillStyle = col.body;
+  c.fillRect(cx - 9, baseY - 37, 18, 13);
+  c.beginPath();
+  if (c.roundRect) { c.roundRect(cx - 9, baseY - 53, 18, 18, 3); } else { c.rect(cx - 9, baseY - 53, 18, 18); }
+  c.fill();
+
+  c.fillStyle = 'rgba(255,255,255,0.7)';
+  c.font = 'bold 8px sans-serif';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText(pKey === 'p1' ? '1' : '2', cx, baseY - 44);
+
+  c.strokeStyle = col.skin;
+  c.lineWidth = 4;
+  c.beginPath(); c.moveTo(cx - 9, baseY - 50); c.lineTo(cx - 16, baseY - 38); c.stroke();
+  c.beginPath(); c.moveTo(cx + 9, baseY - 50); c.lineTo(cx + 16, baseY - 38); c.stroke();
+
+  c.fillStyle = col.skin;
+  c.beginPath();
+  c.arc(cx, baseY - 63, 10, 0, Math.PI * 2);
+  c.fill();
+
+  c.fillStyle = col.hair;
+  c.beginPath();
+  c.ellipse(cx, baseY - 68, 8, 6, 0, Math.PI, 0);
+  c.fill();
+
+  c.fillStyle = '#333';
+  c.beginPath();
+  c.arc(cx + 3, baseY - 63, 1.4, 0, Math.PI * 2);
+  c.fill();
 }
 
 // ── Serve ─────────────────────────────────────────────────────
@@ -205,7 +559,6 @@ function circleHit(bx, by, br, px, py, pr) {
 
 // ── Physics update ─────────────────────────────────────────────
 function update() {
-  // Point screen timeout — must run even when state === 'point'
   if (state === 'point') {
     pointTimer--;
     if (pointTimer <= 0) {
@@ -232,13 +585,11 @@ function update() {
 
   bgTime += 0.01;
 
-  // Move clouds
   clouds.forEach(c => {
     c.x += c.speed;
     if (c.x > W + c.w) c.x = -c.w;
   });
 
-  // Move seagulls
   seagulls.forEach(s => {
     s.x += s.speed;
     s.wingPhase += 0.08;
@@ -271,12 +622,9 @@ function update() {
       p.vy = 0;
       p.onGround = true;
     }
-    // Court sideline bounds (players stay within the court)
     p.x = Math.max(COURT_LEFT + PLAYER_R, Math.min(COURT_RIGHT - PLAYER_R, p.x));
-    // Net: keep players on their side
     if (p.side === 1) p.x = Math.min(NET_X - PLAYER_R - 5, p.x);
     if (p.side === 2) p.x = Math.max(NET_X + PLAYER_R + 5, p.x);
-    // Cooldowns
     if (p.hitCooldown > 0) p.hitCooldown--;
     if (p.swingAnim > 0) p.swingAnim -= 0.15;
   });
@@ -289,11 +637,9 @@ function update() {
     ball.angle += ball.vx * 0.05;
     ball.spin  *= 0.99;
 
-    // Trail
     ball.trailPoints.push({ x: ball.x, y: ball.y });
     if (ball.trailPoints.length > 8) ball.trailPoints.shift();
 
-    // Net collision — matches the 18px visual strip
     const NET_HALF_COL = 18;
     if (ball.x > NET_X - NET_HALF_COL && ball.x < NET_X + NET_HALF_COL && ball.y > NET_TOP_Y && ball.y < GROUND_Y) {
       ball.vx *= -0.55;
@@ -302,7 +648,6 @@ function update() {
       spawnParticles(ball.x, ball.y, 6, 'rgba(255,255,255,0.7)');
     }
 
-    // Player hit detection
     [p1, p2].forEach(p => {
       if (p.hitCooldown > 0) return;
       if (circleHit(ball.x, ball.y, BALL_R, p.x, p.y - 10, PLAYER_R + 5)) {
@@ -310,27 +655,23 @@ function update() {
       }
     });
 
-    // Ball lands — check in bounds vs out of bounds
     if (ball.y > GROUND_Y - BALL_R) {
       ball.y = GROUND_Y - BALL_R;
       if (ball.x < COURT_LEFT || ball.x > COURT_RIGHT) {
-        // Out of bounds — whoever last hit it loses the point
         const hitter = ball.lastHit;
         awardPoint(hitter === 1 ? 2 : 1);
       } else if (ball.x < NET_X) {
-        awardPoint(2); // landed on P1's side
+        awardPoint(2);
       } else {
-        awardPoint(1); // landed on P2's side
+        awardPoint(1);
       }
     }
   } else {
-    // Ball rides above serving player
     const server = servingPlayer === 1 ? p1 : p2;
     ball.x = server.x;
     ball.y = server.y - PLAYER_R - BALL_R - 5;
   }
 
-  // Update particles
   particles.forEach(pt => {
     pt.x += pt.vx;
     pt.y += pt.vy;
@@ -340,7 +681,6 @@ function update() {
   });
   particles = particles.filter(p => p.life > 0);
 
-  // Update confetti
   confetti.forEach(c => {
     c.x += c.vx;
     c.y += c.vy;
@@ -350,7 +690,6 @@ function update() {
     c.alpha = Math.min(1, c.life / 20);
   });
   confetti = confetti.filter(c => c.life > 0);
-
 }
 
 function hitBallByPlayer(p) {
@@ -361,12 +700,10 @@ function hitBallByPlayer(p) {
   const dy = ball.y - (p.y - 10);
   const d  = Math.sqrt(dx * dx + dy * dy) || 1;
 
-  // Reflect + boost towards opponent side
   const spd = 10 + Math.random() * 3;
   ball.vx = (dx / d) * spd + (p.side === 1 ? 3 : -3);
   ball.vy = (dy / d) * spd - 8;
 
-  // Clamp so it always goes to opponent side
   if (p.side === 1 && ball.vx < 2)  ball.vx = 2;
   if (p.side === 2 && ball.vx > -2) ball.vx = -2;
 
@@ -423,9 +760,6 @@ function awardPoint(winner) {
   let setOver = false;
   if (scoreP1 >= 7 && scoreP1 - scoreP2 >= 2) { setsP1++; setOver = true; }
   else if (scoreP2 >= 7 && scoreP2 - scoreP1 >= 2) { setsP2++; setOver = true; }
-  else if (scoreP1 >= 7 || scoreP2 >= 7) {
-    // Deuce-like: need 2 ahead
-  }
 
   if (setOver) {
     updateHUD();
@@ -460,6 +794,13 @@ function showPointScreen(winner, setEnd) {
 
 function endGame(winner) {
   state = 'gameover';
+
+  // Record stats locally — both local and online games count
+  // In online mode the host records stats here; guest records when it receives winner via state
+  if (!onlineMode || onlineMode === 'host') {
+    recordGameStats(winner);
+  }
+
   const color = winner === 1 ? '#6EA8FF' : '#FF7070';
   document.getElementById('winner-text').innerHTML =
     `<span style="color:${color}">Player ${winner} Wins!</span>`;
@@ -472,26 +813,21 @@ function endGame(winner) {
 // ── Drawing ───────────────────────────────────────────────────
 
 function drawBackground() {
-  // Sky gradient
   const skyGrad = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
   skyGrad.addColorStop(0, '#0d4f80');
   skyGrad.addColorStop(1, '#87CEEB');
   ctx.fillStyle = skyGrad;
   ctx.fillRect(0, 0, W, GROUND_Y);
 
-  // Sun
   ctx.save();
   const sunX = W * 0.12, sunY = 70;
-  // Sun glow
   const sunGlow = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, 70);
   sunGlow.addColorStop(0, 'rgba(255,230,80,0.4)');
   sunGlow.addColorStop(1, 'rgba(255,230,80,0)');
   ctx.fillStyle = sunGlow;
   ctx.beginPath(); ctx.arc(sunX, sunY, 70, 0, Math.PI * 2); ctx.fill();
-  // Sun body
   ctx.fillStyle = '#FFE44D';
   ctx.beginPath(); ctx.arc(sunX, sunY, 28, 0, Math.PI * 2); ctx.fill();
-  // Sun rays
   ctx.strokeStyle = 'rgba(255,230,80,0.5)';
   ctx.lineWidth = 2;
   for (let i = 0; i < 12; i++) {
@@ -503,7 +839,6 @@ function drawBackground() {
   }
   ctx.restore();
 
-  // Clouds
   clouds.forEach(c => {
     ctx.save();
     ctx.globalAlpha = c.opacity * 0.85;
@@ -512,7 +847,6 @@ function drawBackground() {
     ctx.restore();
   });
 
-  // Seagulls
   seagulls.forEach(s => {
     ctx.save();
     ctx.globalAlpha = 0.6;
@@ -529,7 +863,6 @@ function drawBackground() {
     ctx.restore();
   });
 
-  // Ocean sparkles far
   ctx.save();
   ctx.globalAlpha = 0.15;
   ctx.fillStyle = '#fff';
@@ -540,14 +873,12 @@ function drawBackground() {
   }
   ctx.restore();
 
-  // Sand
   const sandGrad = ctx.createLinearGradient(0, GROUND_Y, 0, H);
   sandGrad.addColorStop(0, '#F5DEB3');
   sandGrad.addColorStop(1, '#C8A96A');
   ctx.fillStyle = sandGrad;
   ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
 
-  // Sand texture
   ctx.save();
   ctx.globalAlpha = 0.08;
   ctx.fillStyle = '#8B6914';
@@ -558,21 +889,18 @@ function drawBackground() {
   }
   ctx.restore();
 
-  // Sand line highlight
   ctx.save();
   ctx.strokeStyle = 'rgba(255,255,255,0.4)';
   ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(0, GROUND_Y); ctx.lineTo(W, GROUND_Y); ctx.stroke();
   ctx.restore();
 
-  // Outside-court sand (slightly darker, shows the out-of-bounds area)
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.18)';
   ctx.fillRect(0, GROUND_Y, COURT_LEFT, H - GROUND_Y);
   ctx.fillRect(COURT_RIGHT, GROUND_Y, W - COURT_RIGHT, H - GROUND_Y);
   ctx.restore();
 
-  // Player zone tint — subtle blue (P1) and red (P2) inside court only
   ctx.save();
   ctx.globalAlpha = 0.08;
   ctx.fillStyle = '#4682B4';
@@ -581,7 +909,6 @@ function drawBackground() {
   ctx.fillRect(NET_X, GROUND_Y, COURT_RIGHT - NET_X, H - GROUND_Y);
   ctx.restore();
 
-  // Sideline flags / poles
   function drawSidelineFlag(fx) {
     ctx.save();
     ctx.fillStyle = '#8B4513';
@@ -597,18 +924,14 @@ function drawBackground() {
   drawSidelineFlag(COURT_LEFT);
   drawSidelineFlag(COURT_RIGHT);
 
-  // Court boundary lines
   ctx.save();
   ctx.strokeStyle = 'rgba(255,255,255,0.75)';
   ctx.lineWidth = 2.5;
   ctx.lineCap = 'round';
-  // Sidelines (vertical)
   ctx.beginPath(); ctx.moveTo(COURT_LEFT, GROUND_Y); ctx.lineTo(COURT_LEFT, H - 6); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(COURT_RIGHT, GROUND_Y); ctx.lineTo(COURT_RIGHT, H - 6); ctx.stroke();
-  // End lines (horizontal bottom)
   ctx.beginPath(); ctx.moveTo(COURT_LEFT, H - 6); ctx.lineTo(NET_X, H - 6); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(NET_X, H - 6); ctx.lineTo(COURT_RIGHT, H - 6); ctx.stroke();
-  // Attack lines (3m marker, dashed)
   const attackOff = (NET_X - COURT_LEFT) * 0.38;
   ctx.setLineDash([8, 6]);
   ctx.globalAlpha = 0.5;
@@ -616,7 +939,6 @@ function drawBackground() {
   ctx.beginPath(); ctx.moveTo(NET_X + attackOff, GROUND_Y); ctx.lineTo(NET_X + attackOff, H - 6); ctx.stroke();
   ctx.restore();
 
-  // Side labels
   ctx.save();
   ctx.font = 'bold 12px sans-serif';
   ctx.textAlign = 'center';
@@ -646,7 +968,6 @@ function drawNet() {
 
   ctx.save();
 
-  // ── Poles (metal, silver) ───────────────────────────────────
   function drawPole(px) {
     const g = ctx.createLinearGradient(px - poleW, 0, px + poleW, 0);
     g.addColorStop(0,   '#555');
@@ -655,7 +976,6 @@ function drawNet() {
     g.addColorStop(1,   '#666');
     ctx.fillStyle = g;
     ctx.fillRect(px - poleW/2, poleTop, poleW, GROUND_Y - poleTop);
-    // Cap
     ctx.fillStyle = '#bbb';
     ctx.beginPath();
     ctx.roundRect(px - poleW/2 - 1, poleTop - 4, poleW + 2, 8, 2);
@@ -664,15 +984,12 @@ function drawNet() {
   drawPole(netLeft  - poleW/2);
   drawPole(netRight + poleW/2);
 
-  // ── Net body shadow ─────────────────────────────────────────
   ctx.fillStyle = 'rgba(0,0,0,0.2)';
   ctx.fillRect(netLeft + 3, NET_TOP_Y + 3, netHalf * 2, NET_H);
 
-  // ── Net background ──────────────────────────────────────────
   ctx.fillStyle = 'rgba(20,40,80,0.65)';
   ctx.fillRect(netLeft, NET_TOP_Y, netHalf * 2, NET_H);
 
-  // Horizontal ropes
   ctx.strokeStyle = 'rgba(200,220,255,0.5)';
   ctx.lineWidth = 1;
   const rowCount = 8;
@@ -682,16 +999,13 @@ function drawNet() {
     ctx.beginPath(); ctx.moveTo(netLeft, ny); ctx.lineTo(netRight, ny); ctx.stroke();
   }
 
-  // Vertical center rope
   ctx.globalAlpha = 0.3;
   ctx.beginPath(); ctx.moveTo(NET_X, NET_TOP_Y); ctx.lineTo(NET_X, GROUND_Y); ctx.stroke();
 
-  // ── Bottom white band ───────────────────────────────────────
   ctx.globalAlpha = 1;
   ctx.fillStyle = '#ddd';
   ctx.fillRect(netLeft, GROUND_Y - 8, netHalf * 2, 8);
 
-  // ── Top tape (white / blue) ─────────────────────────────────
   const tapeH = 10;
   const segs  = 5;
   for (let i = 0; i < segs; i++) {
@@ -709,9 +1023,10 @@ function drawPlayer(p) {
   ctx.translate(p.x, p.y);
 
   const isP1 = p.side === 1;
-  const body   = isP1 ? PALETTE.p1Body : PALETTE.p2Body;
-  const skin   = isP1 ? PALETTE.p1Skin : PALETTE.p2Skin;
-  const hair   = isP1 ? PALETTE.p1Hair : PALETTE.p2Hair;
+  const pKey = isP1 ? 'p1' : 'p2';
+  const body   = playerColors[pKey].body;
+  const skin   = playerColors[pKey].skin;
+  const hair   = playerColors[pKey].hair;
   const facing = p.facing;
 
   // Shadow
@@ -725,7 +1040,6 @@ function drawPlayer(p) {
   ctx.fill();
   ctx.restore();
 
-  // Walk/swing animation
   const walk = Math.sin(p.walkAnim) * (p.onGround ? 1 : 0);
   const swing = p.swingAnim;
 
@@ -735,12 +1049,10 @@ function drawPlayer(p) {
   ctx.strokeStyle = skin;
   ctx.lineWidth = 5;
   ctx.lineCap = 'round';
-  // Left leg
   ctx.beginPath();
   ctx.moveTo(-legSep, 5);
   ctx.lineTo(-legSep + walk * 5, legLen);
   ctx.stroke();
-  // Right leg
   ctx.beginPath();
   ctx.moveTo(legSep, 5);
   ctx.lineTo(legSep - walk * 5, legLen);
@@ -750,7 +1062,7 @@ function drawPlayer(p) {
   ctx.fillStyle = body;
   ctx.fillRect(-legSep - 3, 0, (legSep + 3) * 2, 12);
 
-  // Body (torso)
+  // Torso
   ctx.fillStyle = body;
   ctx.beginPath();
   ctx.roundRect(-10, -18, 20, 22, 4);
@@ -768,13 +1080,11 @@ function drawPlayer(p) {
   ctx.lineWidth = 5;
   ctx.lineCap = 'round';
   const armSwing = swing * 20;
-  // Left arm
   ctx.save();
   ctx.translate(-12, -12);
   ctx.rotate((-0.3 + walk * 0.3) * facing);
   ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 14); ctx.stroke();
   ctx.restore();
-  // Right arm (hits)
   ctx.save();
   ctx.translate(12, -12);
   ctx.rotate((0.3 - walk * 0.3 - armSwing * 0.05 * facing) * facing);
@@ -816,7 +1126,6 @@ function drawPlayer(p) {
 }
 
 function drawBall() {
-  // Trail
   ball.trailPoints.forEach((pt, i) => {
     const alpha = (i / ball.trailPoints.length) * 0.3;
     ctx.save();
@@ -832,7 +1141,6 @@ function drawBall() {
   ctx.translate(ball.x, ball.y);
   ctx.rotate(ball.angle);
 
-  // Shadow
   ctx.save();
   const shadowY = GROUND_Y - ball.y;
   const shadowScale = Math.max(0.2, 1 - shadowY / 300);
@@ -845,7 +1153,6 @@ function drawBall() {
   ctx.fill();
   ctx.restore();
 
-  // Ball base
   const ballGrad = ctx.createRadialGradient(-4, -4, 2, 0, 0, BALL_R);
   ballGrad.addColorStop(0, '#ffffff');
   ballGrad.addColorStop(0.4, '#F0F0F0');
@@ -855,22 +1162,18 @@ function drawBall() {
   ctx.arc(0, 0, BALL_R, 0, Math.PI * 2);
   ctx.fill();
 
-  // Volleyball seam lines
   ctx.strokeStyle = '#5599CC';
   ctx.lineWidth = 1.5;
   ctx.globalAlpha = 0.7;
 
-  // Horizontal curve
   ctx.beginPath();
   ctx.ellipse(0, 0, BALL_R * 0.9, BALL_R * 0.35, 0, 0, Math.PI * 2);
   ctx.stroke();
 
-  // Vertical curve
   ctx.beginPath();
   ctx.ellipse(0, 0, BALL_R * 0.35, BALL_R * 0.9, 0, 0, Math.PI * 2);
   ctx.stroke();
 
-  // Diagonal seams
   ctx.save();
   ctx.rotate(Math.PI / 4);
   ctx.beginPath();
@@ -878,7 +1181,6 @@ function drawBall() {
   ctx.stroke();
   ctx.restore();
 
-  // Shine
   ctx.save();
   ctx.globalAlpha = 0.5;
   const shine = ctx.createRadialGradient(-5, -5, 0, -5, -5, 8);
@@ -979,16 +1281,21 @@ function gameLoop() {
 function captureState() {
   return {
     gs: state, scoreP1, scoreP2, setsP1, setsP2, currentSet, servingPlayer, pointTimer,
+    winner: state === 'gameover' ? (setsP1 > setsP2 ? 1 : 2) : 0,
     p1: { x: p1.x, y: p1.y, vy: p1.vy, facing: p1.facing, onGround: p1.onGround, swingAnim: p1.swingAnim, walkAnim: p1.walkAnim },
     p2: { x: p2.x, y: p2.y, vy: p2.vy, facing: p2.facing, onGround: p2.onGround, swingAnim: p2.swingAnim, walkAnim: p2.walkAnim },
     ball: { x: ball.x, y: ball.y, vx: ball.vx, vy: ball.vy, angle: ball.angle, served: ball.served, lastHit: ball.lastHit, trailPoints: ball.trailPoints.slice(-6) },
     particles: particles.map(p => ({...p})),
     confetti:  confetti.map(c => ({...c})),
-    // DOM text so guest can show point/gameover screens
     pointMsg:  document.getElementById('point-message').innerHTML,
     pointSub:  document.getElementById('point-sub').textContent,
     winnerTxt: document.getElementById('winner-text').innerHTML,
     finalScr:  document.getElementById('final-score').textContent,
+    // Broadcast current player colors so guest renders them correctly
+    playerColors: {
+      p1: { ...playerColors.p1 },
+      p2: { ...playerColors.p2 },
+    },
   };
 }
 
@@ -1005,6 +1312,12 @@ function applyState(s) {
   particles = s.particles;
   confetti  = s.confetti;
 
+  // Apply colors sent from host
+  if (s.playerColors) {
+    Object.assign(playerColors.p1, s.playerColors.p1);
+    Object.assign(playerColors.p2, s.playerColors.p2);
+  }
+
   document.getElementById('point-message').innerHTML  = s.pointMsg  || '';
   document.getElementById('point-sub').textContent    = s.pointSub  || '';
   document.getElementById('winner-text').innerHTML    = s.winnerTxt || '';
@@ -1014,7 +1327,11 @@ function applyState(s) {
   if (state !== prevGs) {
     if      (state === 'playing')  showScreen('game');
     else if (state === 'point')    showScreen('point');
-    else if (state === 'gameover') showScreen('gameover');
+    else if (state === 'gameover') {
+      showScreen('gameover');
+      // Guest records their own stats when the host confirms game over
+      if (onlineMode === 'guest' && s.winner) recordGameStats(s.winner);
+    }
   }
 }
 
@@ -1025,15 +1342,16 @@ function initOnlineMode(role) {
   if (role === 'host') {
     netSocket.on('keys', keyState => {
       Object.assign(guestKeys, keyState);
-      // P2 jump / serve needs edge-detect — host applies when ArrowUp first appears
       if (keyState['ArrowUp'] && !guestKeys['_upPrev'] && state === 'playing') {
         if (p2.onGround) { p2.vy = JUMP_VY; p2.onGround = false; }
         if (!ball.served && servingPlayer === 2) serveBall();
       }
       guestKeys['_upPrev'] = keyState['ArrowUp'];
     });
-    resetGame();
-    startGame();
+
+    // Host goes to customize (both panels) then starts game
+    customizeOrigin = 'online';
+    openCustomize();
   }
 
   if (role === 'guest') {
@@ -1052,15 +1370,16 @@ function initOnlineMode(role) {
     sendKeys();
 
     netSocket.on('game-state', applyState);
-    resetGame();
-    showScreen('game');
+
+    // Guest goes to customize (own panel only) then waits for host state
+    customizeOrigin = 'online';
+    openCustomize();
   }
 }
 
 // ── Online: lobby UI ─────────────────────────────────────────
 function getSocket() {
   if (!netSocket) {
-    // Works on localhost and on any hosted server (Railway, Render, etc.)
     netSocket = io(window.location.origin);
     netSocket.on('opponent-left', () => {
       onlineMode = null;
@@ -1069,12 +1388,19 @@ function getSocket() {
       showScreen('start');
       alert('Opponent disconnected.');
     });
+    // Guest receives color update from host during customize
+    netSocket.on('colors', ({ playerColors: remoteColors }) => {
+      if (remoteColors) {
+        Object.assign(playerColors.p1, remoteColors.p1);
+        Object.assign(playerColors.p2, remoteColors.p2);
+      }
+    });
   }
   return netSocket;
 }
 
 document.getElementById('btn-online').addEventListener('click', () => {
-  getSocket(); // connect early
+  getSocket();
   document.getElementById('online-status').textContent = '';
   showScreen('online');
 });
@@ -1109,6 +1435,7 @@ document.getElementById('btn-join-room').addEventListener('click', () => {
 });
 
 // ── Boot ──────────────────────────────────────────────────────
+loadPlayerColors();
 initBgElements();
 resetGame();
 showScreen('start');
