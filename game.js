@@ -21,32 +21,25 @@ const PLAYER_SPD  = 4.5;
 const BALL_R      = 14;
 const PLAYER_R    = 22;
 
-// ── Colour palette ───────────────────────────────────────────
+// ── Colour palette (Miami Vice / Synthwave) ───────────────────
 const PALETTE = {
-  skyTop:    '#1a6ba0',
-  skyBot:    '#87CEEB',
-  sun:       '#FFE44D',
-  sandTop:   '#F5DEB3',
-  sandBot:   '#C8A96A',
-  netPole:   '#8B4513',
-  netLine:   'rgba(255,255,255,0.9)',
-  netShadow: 'rgba(0,0,0,0.3)',
+  neonCyan:  '#00f5ff',
+  neonPink:  '#ff2d78',
+  neonPurp:  '#b300ff',
   // defaults (overridden by playerColors)
-  p1Body:    '#4682B4',
+  p1Body:    '#00f5ff',
   p1Skin:    '#FFDAB9',
-  p1Hair:    '#2C3E50',
-  p2Body:    '#CC3333',
-  p2Skin:    '#FFB347',
+  p1Hair:    '#1a1a1a',
+  p2Body:    '#ff2d78',
+  p2Skin:    '#D4956A',
   p2Hair:    '#1a1a1a',
-  ballBase:  '#F5F5F5',
-  ballLine:  '#5599CC',
-  shadow:    'rgba(0,0,0,0.25)',
+  shadow:    'rgba(0,0,0,0.5)',
 };
 
-// ── Customization presets ────────────────────────────────────
+// ── Customization presets (neon palette) ─────────────────────
 const SKIN_PRESETS   = ['#FFDAB9','#D4956A','#A0522D','#6B3A2A','#8B7355','#F4A7B9'];
-const HAIR_PRESETS   = ['#1a1a1a','#6B3A2A','#D4A843','#A0200F','#C0C0C0','#3355AA'];
-const OUTFIT_PRESETS = ['#4682B4','#CC3333','#2E8B57','#6A1E9A','#D4620A','#1A9090'];
+const HAIR_PRESETS   = ['#1a1a1a','#6B3A2A','#D4A843','#ff2d78','#C0C0C0','#00f5ff'];
+const OUTFIT_PRESETS = ['#00f5ff','#ff2d78','#aaff00','#b300ff','#ff8800','#00ff9d'];
 
 // ── Player colors (live, read by drawPlayer) ─────────────────
 let playerColors = {
@@ -250,7 +243,23 @@ document.addEventListener('keydown', e => {
 document.addEventListener('keyup', e => { keys[e.code] = false; });
 
 // ── Button wiring ─────────────────────────────────────────────
+
+// Start music on first interaction (browser requires user gesture)
+function ensureMusic() {
+  if (!AudioEngine.isPlaying()) AudioEngine.start();
+}
+
+// Autostart music on very first interaction anywhere on the page
+function onFirstInteraction() {
+  ensureMusic();
+  document.removeEventListener('click', onFirstInteraction);
+  document.removeEventListener('keydown', onFirstInteraction);
+}
+document.addEventListener('click', onFirstInteraction);
+document.addEventListener('keydown', onFirstInteraction);
+
 document.getElementById('btn-start').addEventListener('click', () => {
+  ensureMusic();
   customizeOrigin = 'local';
   openCustomize();
 });
@@ -260,12 +269,17 @@ document.getElementById('btn-restart').addEventListener('click', () => {
   openCustomize();
 });
 
-document.getElementById('btn-stats').addEventListener('click', openStats);
+document.getElementById('btn-stats').addEventListener('click', () => { ensureMusic(); openStats(); });
 document.getElementById('btn-back-stats').addEventListener('click', () => showScreen('start'));
 document.getElementById('btn-reset-stats').addEventListener('click', () => {
   saveStats('stats_p1', defaultStats());
   saveStats('stats_p2', defaultStats());
   renderStats();
+});
+
+document.getElementById('btn-mute').addEventListener('click', () => {
+  AudioEngine.toggle();
+  document.getElementById('btn-mute').textContent = AudioEngine.isPlaying() ? '🔊' : '🔇';
 });
 
 // Customize back button
@@ -296,6 +310,7 @@ function startGame() {
   state = 'playing';
   showScreen('game');
   updateHUD();
+  ensureMusic();
 }
 
 // ── Customize screen ─────────────────────────────────────────
@@ -545,6 +560,7 @@ function serveBall() {
   const dir = servingPlayer === 1 ? 1 : -1;
   ball.vx = dir * (3 + Math.random());
   ball.vy = -10;
+  AudioEngine.sfxServe();
 }
 
 // ── Collision helpers ─────────────────────────────────────────
@@ -645,7 +661,8 @@ function update() {
       ball.vx *= -0.55;
       ball.vy *= 0.45;
       ball.x = ball.vx > 0 ? NET_X + NET_HALF_COL + 1 : NET_X - NET_HALF_COL - 1;
-      spawnParticles(ball.x, ball.y, 6, 'rgba(255,255,255,0.7)');
+      spawnParticles(ball.x, ball.y, 6, 'rgba(0,245,255,0.8)');
+      AudioEngine.sfxNet();
     }
 
     [p1, p2].forEach(p => {
@@ -708,7 +725,8 @@ function hitBallByPlayer(p) {
   if (p.side === 2 && ball.vx > -2) ball.vx = -2;
 
   ball.lastHit = p.side;
-  spawnParticles(ball.x, ball.y, 8, 'rgba(255,220,100,0.7)');
+  spawnParticles(ball.x, ball.y, 8, p.side === 1 ? 'rgba(0,245,255,0.8)' : 'rgba(255,45,120,0.8)');
+  AudioEngine.sfxHit();
 }
 
 function spawnParticles(x, y, count, color) {
@@ -750,7 +768,8 @@ function spawnConfetti(cx, cy) {
 }
 
 function awardPoint(winner) {
-  spawnParticles(ball.x, ball.y, 20, winner === 1 ? 'rgba(100,160,255,0.8)' : 'rgba(255,100,100,0.8)');
+  spawnParticles(ball.x, ball.y, 20, winner === 1 ? 'rgba(0,245,255,0.9)' : 'rgba(255,45,120,0.9)');
+  AudioEngine.sfxPoint();
   spawnConfetti(winner === 1 ? W * 0.25 : W * 0.75, GROUND_Y - 150);
 
   if (winner === 1) scoreP1++; else scoreP2++;
@@ -794,6 +813,7 @@ function showPointScreen(winner, setEnd) {
 
 function endGame(winner) {
   state = 'gameover';
+  AudioEngine.sfxGameOver();
 
   // Record stats locally — both local and online games count
   // In online mode the host records stats here; guest records when it receives winner via state
@@ -813,150 +833,207 @@ function endGame(winner) {
 // ── Drawing ───────────────────────────────────────────────────
 
 function drawBackground() {
+  // ── Night sky ───────────────────────────────────────────────
   const skyGrad = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
-  skyGrad.addColorStop(0, '#0d4f80');
-  skyGrad.addColorStop(1, '#87CEEB');
+  skyGrad.addColorStop(0,    '#05001a');
+  skyGrad.addColorStop(0.55, '#1a0035');
+  skyGrad.addColorStop(0.85, '#4a0060');
+  skyGrad.addColorStop(1,    '#8b0060');
   ctx.fillStyle = skyGrad;
   ctx.fillRect(0, 0, W, GROUND_Y);
 
+  // ── Stars ───────────────────────────────────────────────────
   ctx.save();
-  const sunX = W * 0.12, sunY = 70;
-  const sunGlow = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, 70);
-  sunGlow.addColorStop(0, 'rgba(255,230,80,0.4)');
-  sunGlow.addColorStop(1, 'rgba(255,230,80,0)');
-  ctx.fillStyle = sunGlow;
-  ctx.beginPath(); ctx.arc(sunX, sunY, 70, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#FFE44D';
-  ctx.beginPath(); ctx.arc(sunX, sunY, 28, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = 'rgba(255,230,80,0.5)';
-  ctx.lineWidth = 2;
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2 + bgTime * 0.3;
+  for (let i = 0; i < 90; i++) {
+    const sx = (i * 173 + 31) % W;
+    const sy = (i * 97  + 17) % (GROUND_Y * 0.72);
+    const twinkle = 0.25 + 0.75 * Math.abs(Math.sin(bgTime * 1.2 + i * 0.7));
+    ctx.globalAlpha = twinkle * 0.85;
+    ctx.fillStyle   = '#ffffff';
     ctx.beginPath();
-    ctx.moveTo(sunX + Math.cos(a) * 34, sunY + Math.sin(a) * 34);
-    ctx.lineTo(sunX + Math.cos(a) * 46, sunY + Math.sin(a) * 46);
-    ctx.stroke();
+    ctx.arc(sx, sy, 0.8 + (i % 3) * 0.5, 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.restore();
 
-  clouds.forEach(c => {
+  // ── Synthwave sun (half-circle at horizon, with stripe cutouts) ─
+  ctx.save();
+  const sunX = NET_X, sunY = GROUND_Y, sunR = 155;
+  // Outer glow
+  const glow = ctx.createRadialGradient(sunX, sunY, sunR * 0.4, sunX, sunY, sunR * 2.2);
+  glow.addColorStop(0, 'rgba(255,45,120,0.22)');
+  glow.addColorStop(1, 'rgba(255,45,120,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(sunX, sunY, sunR * 2.2, Math.PI, 0); ctx.fill();
+  // Sun body
+  const sunGrad = ctx.createLinearGradient(sunX, sunY - sunR, sunX, sunY);
+  sunGrad.addColorStop(0,   '#ff9500');
+  sunGrad.addColorStop(0.3, '#ff2d78');
+  sunGrad.addColorStop(0.7, '#c800ff');
+  sunGrad.addColorStop(1,   '#6600cc');
+  ctx.beginPath(); ctx.arc(sunX, sunY, sunR, Math.PI, 0);
+  ctx.fillStyle = sunGrad; ctx.fill();
+  // Horizontal stripe cutouts (dark bars cut into the sun)
+  const stripes = 10;
+  for (let i = 0; i < stripes; i++) {
+    const t  = i / stripes;
+    const sy2 = (sunY - sunR) + t * sunR;
+    const sh  = Math.pow(1 - t, 1.2) * 8 + 1;
     ctx.save();
-    ctx.globalAlpha = c.opacity * 0.85;
-    ctx.fillStyle = '#ffffff';
-    drawCloud(c.x, c.y, c.w);
+    ctx.beginPath(); ctx.arc(sunX, sunY, sunR, Math.PI, 0); ctx.clip();
+    // Approximate sky colour at this height
+    const lum = Math.round(2 + t * 8);
+    ctx.fillStyle = `hsl(285, 100%, ${lum}%)`;
+    ctx.fillRect(sunX - sunR, sy2, sunR * 2, sh);
     ctx.restore();
-  });
-
-  seagulls.forEach(s => {
-    ctx.save();
-    ctx.globalAlpha = 0.6;
-    ctx.strokeStyle = '#555';
-    ctx.lineWidth = 1.5 * s.scale;
-    ctx.scale(s.scale, s.scale);
-    const sx = s.x / s.scale, sy = s.y / s.scale;
-    const wing = Math.sin(s.wingPhase) * 8;
-    ctx.beginPath();
-    ctx.moveTo(sx - 10, sy);
-    ctx.quadraticCurveTo(sx - 5, sy - wing, sx, sy + 1);
-    ctx.quadraticCurveTo(sx + 5, sy - wing, sx + 10, sy);
-    ctx.stroke();
-    ctx.restore();
-  });
-
-  ctx.save();
-  ctx.globalAlpha = 0.15;
-  ctx.fillStyle = '#fff';
-  for (let i = 0; i < 8; i++) {
-    const ox = (i * 130 + bgTime * 20) % W;
-    const oy = GROUND_Y - 40 + Math.sin(bgTime + i) * 5;
-    ctx.beginPath(); ctx.arc(ox, oy, 2, 0, Math.PI * 2); ctx.fill();
   }
-  ctx.restore();
-
-  const sandGrad = ctx.createLinearGradient(0, GROUND_Y, 0, H);
-  sandGrad.addColorStop(0, '#F5DEB3');
-  sandGrad.addColorStop(1, '#C8A96A');
-  ctx.fillStyle = sandGrad;
-  ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
-
-  ctx.save();
-  ctx.globalAlpha = 0.08;
-  ctx.fillStyle = '#8B6914';
-  for (let i = 0; i < 60; i++) {
-    const tx = (i * 53 + 7) % W;
-    const ty = GROUND_Y + 5 + (i * 17) % (H - GROUND_Y - 10);
-    ctx.beginPath(); ctx.arc(tx, ty, 1.5, 0, Math.PI * 2); ctx.fill();
-  }
-  ctx.restore();
-
-  ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-  ctx.lineWidth = 1;
+  // Horizon neon glow line
+  ctx.shadowColor = '#ff2d78'; ctx.shadowBlur = 20;
+  ctx.strokeStyle = '#ff2d78'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(0, GROUND_Y); ctx.lineTo(W, GROUND_Y); ctx.stroke();
   ctx.restore();
 
+  // ── Seagulls (dark silhouettes) ─────────────────────────────
+  seagulls.forEach(s => {
+    ctx.save();
+    ctx.globalAlpha = 0.45;
+    ctx.strokeStyle = '#1a0035';
+    ctx.lineWidth   = 1.5 * s.scale;
+    ctx.scale(s.scale, s.scale);
+    const sx2 = s.x / s.scale, sy2 = s.y / s.scale;
+    const wing = Math.sin(s.wingPhase) * 8;
+    ctx.beginPath();
+    ctx.moveTo(sx2 - 10, sy2);
+    ctx.quadraticCurveTo(sx2 - 5, sy2 - wing, sx2, sy2 + 1);
+    ctx.quadraticCurveTo(sx2 + 5, sy2 - wing, sx2 + 10, sy2);
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  // ── Dark ground base ────────────────────────────────────────
+  const gndGrad = ctx.createLinearGradient(0, GROUND_Y, 0, H);
+  gndGrad.addColorStop(0, '#1a0a2e');
+  gndGrad.addColorStop(1, '#0a0518');
+  ctx.fillStyle = gndGrad;
+  ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+
+  // ── Perspective grid ────────────────────────────────────────
   ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.18)';
-  ctx.fillRect(0, GROUND_Y, COURT_LEFT, H - GROUND_Y);
-  ctx.fillRect(COURT_RIGHT, GROUND_Y, W - COURT_RIGHT, H - GROUND_Y);
+  // Horizontal lines (denser near horizon)
+  for (let i = 1; i <= 14; i++) {
+    const t = i / 14;
+    const gy = GROUND_Y + (H - GROUND_Y) * Math.pow(t, 0.38);
+    ctx.globalAlpha = t * 0.65;
+    ctx.strokeStyle = '#ff2d78';
+    ctx.shadowColor = '#ff2d78'; ctx.shadowBlur = 5;
+    ctx.lineWidth   = 0.6 + t * 0.8;
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+  }
+  // Vertical lines converging to NET_X (vanishing point)
+  ctx.shadowColor = '#00f5ff'; ctx.shadowBlur = 5;
+  ctx.strokeStyle = '#00f5ff'; ctx.lineWidth = 0.6;
+  for (let i = 0; i <= 26; i++) {
+    const t = i / 26;
+    ctx.globalAlpha = 0.18 + Math.abs(0.5 - t) * 0.25;
+    ctx.beginPath();
+    ctx.moveTo(NET_X, GROUND_Y);
+    ctx.lineTo(W * t, H);
+    ctx.stroke();
+  }
   ctx.restore();
 
+  // ── Palm trees (silhouettes) ─────────────────────────────────
+  drawPalmTree(COURT_LEFT  - 70, GROUND_Y,  1);
+  drawPalmTree(COURT_RIGHT + 70, GROUND_Y, -1);
+
+  // ── Out-of-bounds darkening ──────────────────────────────────
   ctx.save();
-  ctx.globalAlpha = 0.08;
-  ctx.fillStyle = '#4682B4';
+  ctx.fillStyle = 'rgba(0,0,0,0.32)';
+  ctx.fillRect(0,           GROUND_Y, COURT_LEFT,           H - GROUND_Y);
+  ctx.fillRect(COURT_RIGHT, GROUND_Y, W - COURT_RIGHT,      H - GROUND_Y);
+  ctx.restore();
+
+  // ── Court zone tints ────────────────────────────────────────
+  ctx.save();
+  ctx.globalAlpha = 0.07;
+  ctx.fillStyle = '#00f5ff';
   ctx.fillRect(COURT_LEFT, GROUND_Y, NET_X - COURT_LEFT, H - GROUND_Y);
-  ctx.fillStyle = '#CC3333';
+  ctx.fillStyle = '#ff2d78';
   ctx.fillRect(NET_X, GROUND_Y, COURT_RIGHT - NET_X, H - GROUND_Y);
   ctx.restore();
 
-  function drawSidelineFlag(fx) {
+  // ── Sideline flags (neon pink) ───────────────────────────────
+  function drawFlag(fx) {
     ctx.save();
-    ctx.fillStyle = '#8B4513';
-    ctx.fillRect(fx - 2, GROUND_Y - 40, 4, 40);
-    ctx.fillStyle = '#FFD700';
+    ctx.shadowColor = '#ff2d78'; ctx.shadowBlur = 10;
+    ctx.fillStyle   = '#ff2d78';
+    ctx.fillRect(fx - 2, GROUND_Y - 44, 3, 44);
     ctx.beginPath();
-    ctx.moveTo(fx + 2, GROUND_Y - 40);
-    ctx.lineTo(fx + 18, GROUND_Y - 32);
-    ctx.lineTo(fx + 2, GROUND_Y - 24);
+    ctx.moveTo(fx + 1, GROUND_Y - 44);
+    ctx.lineTo(fx + 18, GROUND_Y - 36);
+    ctx.lineTo(fx + 1,  GROUND_Y - 28);
     ctx.fill();
     ctx.restore();
   }
-  drawSidelineFlag(COURT_LEFT);
-  drawSidelineFlag(COURT_RIGHT);
+  drawFlag(COURT_LEFT);
+  drawFlag(COURT_RIGHT);
 
+  // ── Court lines (neon cyan) ──────────────────────────────────
   ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
-  ctx.lineWidth = 2.5;
-  ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(COURT_LEFT, GROUND_Y); ctx.lineTo(COURT_LEFT, H - 6); ctx.stroke();
+  ctx.shadowColor = '#00f5ff'; ctx.shadowBlur = 8;
+  ctx.strokeStyle = '#00f5ff'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(COURT_LEFT,  GROUND_Y); ctx.lineTo(COURT_LEFT,  H - 6); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(COURT_RIGHT, GROUND_Y); ctx.lineTo(COURT_RIGHT, H - 6); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(COURT_LEFT, H - 6); ctx.lineTo(NET_X, H - 6); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(NET_X, H - 6); ctx.lineTo(COURT_RIGHT, H - 6); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(COURT_LEFT,  H - 6);    ctx.lineTo(NET_X,       H - 6); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(NET_X,       H - 6);    ctx.lineTo(COURT_RIGHT, H - 6); ctx.stroke();
   const attackOff = (NET_X - COURT_LEFT) * 0.38;
-  ctx.setLineDash([8, 6]);
-  ctx.globalAlpha = 0.5;
+  ctx.setLineDash([8, 6]); ctx.globalAlpha = 0.45;
   ctx.beginPath(); ctx.moveTo(NET_X - attackOff, GROUND_Y); ctx.lineTo(NET_X - attackOff, H - 6); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(NET_X + attackOff, GROUND_Y); ctx.lineTo(NET_X + attackOff, H - 6); ctx.stroke();
   ctx.restore();
 
+  // ── Zone labels ──────────────────────────────────────────────
   ctx.save();
-  ctx.font = 'bold 12px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.globalAlpha = 0.28;
-  ctx.fillStyle = '#6EA8FF';
+  ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.globalAlpha = 0.3;
+  ctx.fillStyle = '#00f5ff';
   ctx.fillText('P1', (COURT_LEFT + NET_X) / 2, GROUND_Y + 20);
-  ctx.fillStyle = '#FF7070';
+  ctx.fillStyle = '#ff2d78';
   ctx.fillText('P2', (NET_X + COURT_RIGHT) / 2, GROUND_Y + 20);
   ctx.restore();
 }
 
-function drawCloud(x, y, w) {
-  const h = w * 0.4;
+function drawPalmTree(x, groundY, dir) {
+  ctx.save();
+  ctx.globalAlpha = 0.75;
+  // Trunk
+  ctx.strokeStyle = '#0a0518'; ctx.lineWidth = 9; ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.ellipse(x, y, w * 0.5, h * 0.5, 0, 0, Math.PI * 2);
-  ctx.ellipse(x + w * 0.2, y - h * 0.3, w * 0.3, h * 0.4, 0, 0, Math.PI * 2);
-  ctx.ellipse(x - w * 0.2, y - h * 0.2, w * 0.25, h * 0.35, 0, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.moveTo(x, groundY);
+  ctx.bezierCurveTo(x + dir * 12, groundY - 45, x + dir * 22, groundY - 85, x + dir * 14, groundY - 125);
+  ctx.stroke();
+  // Fronds
+  const tip = { x: x + dir * 14, y: groundY - 125 };
+  const fronds = [
+    [dir * 45, -28], [dir * 55, -5], [dir * 38, 15],
+    [-dir * 32, -22], [-dir * 42, 2], [dir * 18, -50],
+  ];
+  ctx.fillStyle = '#0a0518';
+  fronds.forEach(([dx, dy]) => {
+    ctx.beginPath();
+    ctx.moveTo(tip.x, tip.y);
+    ctx.bezierCurveTo(
+      tip.x + dx * 0.4, tip.y + dy * 0.5,
+      tip.x + dx * 0.8, tip.y + dy,
+      tip.x + dx,       tip.y + dy
+    );
+    ctx.bezierCurveTo(
+      tip.x + dx * 0.7, tip.y + dy + 14,
+      tip.x + dx * 0.3, tip.y + dy * 0.3 + 10,
+      tip.x, tip.y
+    );
+    ctx.fill();
+  });
+  ctx.restore();
 }
 
 function drawNet() {
@@ -969,51 +1046,51 @@ function drawNet() {
   ctx.save();
 
   function drawPole(px) {
+    ctx.shadowColor = '#00f5ff'; ctx.shadowBlur = 12;
     const g = ctx.createLinearGradient(px - poleW, 0, px + poleW, 0);
-    g.addColorStop(0,   '#555');
-    g.addColorStop(0.3, '#ccc');
-    g.addColorStop(0.6, '#eee');
-    g.addColorStop(1,   '#666');
+    g.addColorStop(0, '#1a3a4a'); g.addColorStop(0.4, '#00c8d8'); g.addColorStop(1, '#0a2a3a');
     ctx.fillStyle = g;
     ctx.fillRect(px - poleW/2, poleTop, poleW, GROUND_Y - poleTop);
-    ctx.fillStyle = '#bbb';
+    ctx.fillStyle = '#00f5ff';
     ctx.beginPath();
     ctx.roundRect(px - poleW/2 - 1, poleTop - 4, poleW + 2, 8, 2);
     ctx.fill();
+    ctx.shadowBlur = 0;
   }
   drawPole(netLeft  - poleW/2);
   drawPole(netRight + poleW/2);
 
-  ctx.fillStyle = 'rgba(0,0,0,0.2)';
-  ctx.fillRect(netLeft + 3, NET_TOP_Y + 3, netHalf * 2, NET_H);
-
-  ctx.fillStyle = 'rgba(20,40,80,0.65)';
+  // Net body
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
   ctx.fillRect(netLeft, NET_TOP_Y, netHalf * 2, NET_H);
 
-  ctx.strokeStyle = 'rgba(200,220,255,0.5)';
-  ctx.lineWidth = 1;
+  // Neon rope lines
+  ctx.shadowColor = '#00f5ff'; ctx.shadowBlur = 6;
+  ctx.strokeStyle = 'rgba(0,245,255,0.55)'; ctx.lineWidth = 1;
   const rowCount = 8;
   for (let r = 0; r <= rowCount; r++) {
     const ny = NET_TOP_Y + (r / rowCount) * NET_H;
-    ctx.globalAlpha = 0.65;
+    ctx.globalAlpha = 0.7;
     ctx.beginPath(); ctx.moveTo(netLeft, ny); ctx.lineTo(netRight, ny); ctx.stroke();
   }
-
   ctx.globalAlpha = 0.3;
   ctx.beginPath(); ctx.moveTo(NET_X, NET_TOP_Y); ctx.lineTo(NET_X, GROUND_Y); ctx.stroke();
 
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = '#ddd';
+  // Bottom band
+  ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(0,245,255,0.25)';
   ctx.fillRect(netLeft, GROUND_Y - 8, netHalf * 2, 8);
 
-  const tapeH = 10;
-  const segs  = 5;
+  // Top tape (neon pink / white)
+  ctx.shadowColor = '#ff2d78'; ctx.shadowBlur = 8;
+  const tapeH = 10, segs = 5;
   for (let i = 0; i < segs; i++) {
     const tx = netLeft + (i / segs) * (netHalf * 2);
     const tw = (netHalf * 2) / segs;
-    ctx.fillStyle = i % 2 === 0 ? '#ffffff' : '#1a5bbf';
+    ctx.fillStyle = i % 2 === 0 ? '#ffffff' : '#ff2d78';
     ctx.fillRect(tx, NET_TOP_Y - tapeH / 2, tw, tapeH);
   }
+  ctx.shadowBlur = 0;
 
   ctx.restore();
 }
@@ -1153,10 +1230,11 @@ function drawBall() {
   ctx.fill();
   ctx.restore();
 
+  ctx.shadowColor = '#00f5ff'; ctx.shadowBlur = 18;
   const ballGrad = ctx.createRadialGradient(-4, -4, 2, 0, 0, BALL_R);
-  ballGrad.addColorStop(0, '#ffffff');
-  ballGrad.addColorStop(0.4, '#F0F0F0');
-  ballGrad.addColorStop(1, '#CCCCCC');
+  ballGrad.addColorStop(0,   '#ffffff');
+  ballGrad.addColorStop(0.5, '#d0f8ff');
+  ballGrad.addColorStop(1,   '#80e8ff');
   ctx.fillStyle = ballGrad;
   ctx.beginPath();
   ctx.arc(0, 0, BALL_R, 0, Math.PI * 2);
@@ -1400,6 +1478,7 @@ function getSocket() {
 }
 
 document.getElementById('btn-online').addEventListener('click', () => {
+  ensureMusic();
   getSocket();
   document.getElementById('online-status').textContent = '';
   showScreen('online');

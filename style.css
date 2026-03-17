@@ -5,7 +5,7 @@
 }
 
 body {
-  background: #1a0a2e;
+  background: #05001a;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -23,7 +23,10 @@ body {
 #gameCanvas {
   display: block;
   border-radius: 12px;
-  box-shadow: 0 0 60px rgba(255, 160, 50, 0.3), 0 0 120px rgba(255, 80, 0, 0.1);
+  box-shadow:
+    0 0 40px rgba(0, 245, 255, 0.25),
+    0 0 80px rgba(255, 45, 120, 0.15),
+    0 0 140px rgba(179, 0, 255, 0.1);
 }
 
 #ui-overlay {
