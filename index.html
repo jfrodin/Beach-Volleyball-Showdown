@@ -28,7 +28,26 @@
             </div>
           </div>
           <p class="subtitle">First to <strong>7 points</strong> wins the set · Best of 3</p>
-          <button id="btn-start" class="btn-primary">SERVE!</button>
+          <div class="start-btn-row">
+            <button id="btn-start" class="btn-primary">LOCAL PLAY</button>
+            <button id="btn-online" class="btn-secondary">ONLINE</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="screen-online" class="screen">
+        <div class="title-card">
+          <h2 style="color:#FFD700;letter-spacing:4px;margin-bottom:24px">ONLINE PLAY</h2>
+          <div id="online-lobby">
+            <button id="btn-create-room" class="btn-primary" style="width:100%;margin-bottom:16px">CREATE ROOM</button>
+            <div class="online-divider">— or join with code —</div>
+            <div class="online-join-row">
+              <input id="room-code-input" type="text" maxlength="6" placeholder="XXXXXX" autocomplete="off" />
+              <button id="btn-join-room" class="btn-secondary">JOIN</button>
+            </div>
+          </div>
+          <div id="online-status"></div>
+          <button id="btn-back-local" class="btn-back">← Back</button>
         </div>
       </div>
 
@@ -66,6 +85,7 @@
       </div>
     </div>
   </div>
+  <script src="/socket.io/socket.io.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

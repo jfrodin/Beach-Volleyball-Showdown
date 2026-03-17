@@ -58,6 +58,11 @@ let bgTime = 0;
 
 const keys = {};
 
+// ── Online multiplayer ────────────────────────────────────────
+let onlineMode = null;  // null | 'host' | 'guest'
+let netSocket  = null;
+const guestKeys = {};   // host mirrors guest's held keys here
+
 // ── Entity factories ─────────────────────────────────────────
 function makePlayer(side) {
   const x = side === 1 ? W * 0.25 : W * 0.75;
@@ -157,12 +162,12 @@ function showScreen(name) {
 document.addEventListener('keydown', e => {
   keys[e.code] = true;
   if (state === 'playing') {
-    if ((e.code === 'KeyW') && p1.onGround) { p1.vy = JUMP_VY; p1.onGround = false; }
-    if ((e.code === 'ArrowUp') && p2.onGround) { p2.vy = JUMP_VY; p2.onGround = false; }
-    // Serve
+    if (onlineMode === 'guest') return; // guest sends keys via socket, host applies them
+    if (e.code === 'KeyW' && p1.onGround) { p1.vy = JUMP_VY; p1.onGround = false; }
+    if (!onlineMode && e.code === 'ArrowUp' && p2.onGround) { p2.vy = JUMP_VY; p2.onGround = false; }
     if (!ball.served) {
       if (e.code === 'KeyW' && servingPlayer === 1) serveBall();
-      if (e.code === 'ArrowUp' && servingPlayer === 2) serveBall();
+      if (!onlineMode && e.code === 'ArrowUp' && servingPlayer === 2) serveBall();
     }
   }
 });
@@ -213,6 +218,18 @@ function update() {
 
   if (state !== 'playing') return;
 
+  // Guest: only advance background visuals — physics run on host
+  if (onlineMode === 'guest') {
+    bgTime += 0.01;
+    clouds.forEach(c => { c.x += c.speed; if (c.x > W + c.w) c.x = -c.w; });
+    seagulls.forEach(s => { s.x += s.speed; s.wingPhase += 0.08; if (s.x > W + 30) s.x = -30; });
+    particles.forEach(pt => { pt.x += pt.vx; pt.y += pt.vy; pt.vy += 0.15; pt.life--; pt.alpha = pt.life / pt.maxLife; });
+    particles = particles.filter(p => p.life > 0);
+    confetti.forEach(c => { c.x += c.vx; c.y += c.vy; c.vy += 0.12; c.rot += c.rotV; c.life--; c.alpha = Math.min(1, c.life / 20); });
+    confetti = confetti.filter(c => c.life > 0);
+    return;
+  }
+
   bgTime += 0.01;
 
   // Move clouds
@@ -238,9 +255,10 @@ function update() {
   if (p1.vx !== 0) p1.walkAnim += 0.15;
 
   // ── Player 2 movement ──────────────────────────────────────
+  const p2k = onlineMode === 'host' ? guestKeys : keys;
   p2.vx = 0;
-  if (keys['ArrowLeft'])  { p2.vx = -PLAYER_SPD; p2.facing = -1; }
-  if (keys['ArrowRight']) { p2.vx =  PLAYER_SPD; p2.facing =  1; }
+  if (p2k['ArrowLeft'])  { p2.vx = -PLAYER_SPD; p2.facing = -1; }
+  if (p2k['ArrowRight']) { p2.vx =  PLAYER_SPD; p2.facing =  1; }
   p2.vy += GRAVITY;
   p2.x += p2.vx;
   p2.y += p2.vy;
@@ -949,8 +967,145 @@ function gameLoop() {
     drawConfetti();
   }
 
+  // Host broadcasts state every frame
+  if (onlineMode === 'host' && netSocket) {
+    netSocket.emit('game-state', captureState());
+  }
+
   requestAnimationFrame(gameLoop);
 }
+
+// ── Online: state capture / apply ────────────────────────────
+function captureState() {
+  return {
+    gs: state, scoreP1, scoreP2, setsP1, setsP2, currentSet, servingPlayer, pointTimer,
+    p1: { x: p1.x, y: p1.y, vy: p1.vy, facing: p1.facing, onGround: p1.onGround, swingAnim: p1.swingAnim, walkAnim: p1.walkAnim },
+    p2: { x: p2.x, y: p2.y, vy: p2.vy, facing: p2.facing, onGround: p2.onGround, swingAnim: p2.swingAnim, walkAnim: p2.walkAnim },
+    ball: { x: ball.x, y: ball.y, vx: ball.vx, vy: ball.vy, angle: ball.angle, served: ball.served, lastHit: ball.lastHit, trailPoints: ball.trailPoints.slice(-6) },
+    particles: particles.map(p => ({...p})),
+    confetti:  confetti.map(c => ({...c})),
+    // DOM text so guest can show point/gameover screens
+    pointMsg:  document.getElementById('point-message').innerHTML,
+    pointSub:  document.getElementById('point-sub').textContent,
+    winnerTxt: document.getElementById('winner-text').innerHTML,
+    finalScr:  document.getElementById('final-score').textContent,
+  };
+}
+
+function applyState(s) {
+  const prevGs = state;
+  state = s.gs;
+  scoreP1 = s.scoreP1; scoreP2 = s.scoreP2;
+  setsP1  = s.setsP1;  setsP2  = s.setsP2;
+  currentSet = s.currentSet; servingPlayer = s.servingPlayer; pointTimer = s.pointTimer;
+
+  Object.assign(p1,   s.p1);
+  Object.assign(p2,   s.p2);
+  Object.assign(ball, s.ball);
+  particles = s.particles;
+  confetti  = s.confetti;
+
+  document.getElementById('point-message').innerHTML  = s.pointMsg  || '';
+  document.getElementById('point-sub').textContent    = s.pointSub  || '';
+  document.getElementById('winner-text').innerHTML    = s.winnerTxt || '';
+  document.getElementById('final-score').textContent  = s.finalScr  || '';
+
+  updateHUD();
+  if (state !== prevGs) {
+    if      (state === 'playing')  showScreen('game');
+    else if (state === 'point')    showScreen('point');
+    else if (state === 'gameover') showScreen('gameover');
+  }
+}
+
+// ── Online: start as host or guest ───────────────────────────
+function initOnlineMode(role) {
+  onlineMode = role;
+
+  if (role === 'host') {
+    netSocket.on('keys', keyState => {
+      Object.assign(guestKeys, keyState);
+      // P2 jump / serve needs edge-detect — host applies when ArrowUp first appears
+      if (keyState['ArrowUp'] && !guestKeys['_upPrev'] && state === 'playing') {
+        if (p2.onGround) { p2.vy = JUMP_VY; p2.onGround = false; }
+        if (!ball.served && servingPlayer === 2) serveBall();
+      }
+      guestKeys['_upPrev'] = keyState['ArrowUp'];
+    });
+    resetGame();
+    startGame();
+  }
+
+  if (role === 'guest') {
+    let prevUp = false;
+    const sendKeys = () => {
+      const up = !!keys['ArrowUp'];
+      netSocket.emit('keys', {
+        ArrowLeft:  !!keys['ArrowLeft'],
+        ArrowRight: !!keys['ArrowRight'],
+        ArrowUp:    up,
+        _upPrev:    prevUp,
+      });
+      prevUp = up;
+      requestAnimationFrame(sendKeys);
+    };
+    sendKeys();
+
+    netSocket.on('game-state', applyState);
+    resetGame();
+    showScreen('game');
+  }
+}
+
+// ── Online: lobby UI ─────────────────────────────────────────
+function getSocket() {
+  if (!netSocket) {
+    netSocket = io();
+    netSocket.on('opponent-left', () => {
+      onlineMode = null;
+      netSocket = null;
+      resetGame();
+      showScreen('start');
+      alert('Opponent disconnected.');
+    });
+  }
+  return netSocket;
+}
+
+document.getElementById('btn-online').addEventListener('click', () => {
+  getSocket(); // connect early
+  document.getElementById('online-status').textContent = '';
+  showScreen('online');
+});
+
+document.getElementById('btn-back-local').addEventListener('click', () => showScreen('start'));
+
+document.getElementById('btn-create-room').addEventListener('click', () => {
+  const sock = getSocket();
+  sock.emit('create-room');
+  sock.once('room-created', ({ code }) => {
+    document.getElementById('online-status').innerHTML =
+      `Room code: <strong style="color:#fff;font-size:1.4rem;letter-spacing:6px">${code}</strong><br><span style="font-size:0.8rem;color:#aaa">Waiting for opponent…</span>`;
+  });
+  sock.once('guest-joined', () => {
+    document.getElementById('online-status').textContent = 'Opponent joined! Starting…';
+    setTimeout(() => initOnlineMode('host'), 500);
+  });
+});
+
+document.getElementById('btn-join-room').addEventListener('click', () => {
+  const code = document.getElementById('room-code-input').value.trim().toUpperCase();
+  if (code.length < 6) { document.getElementById('online-status').textContent = 'Enter a 6-character code.'; return; }
+  const sock = getSocket();
+  sock.emit('join-room', { code });
+  sock.once('room-joined', () => {
+    document.getElementById('online-status').textContent = 'Joined! Starting…';
+    setTimeout(() => initOnlineMode('guest'), 500);
+  });
+  sock.once('join-error', ({ msg }) => {
+    document.getElementById('online-status').textContent = `Error: ${msg}`;
+  });
+});
 
 // ── Boot ──────────────────────────────────────────────────────
 initBgElements();
