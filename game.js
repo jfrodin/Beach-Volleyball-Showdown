@@ -47,6 +47,16 @@ let playerColors = {
   p2: { skin: PALETTE.p2Skin, hair: PALETTE.p2Hair, body: PALETTE.p2Body },
 };
 
+// ── Player build stats ────────────────────────────────────────
+const STAT_POOL = 10;
+const STAT_MIN  = 1;
+const STAT_MAX  = 6;
+
+let playerBuildStats = {
+  p1: { speed: 3, power: 3, jump: 4 },
+  p2: { speed: 3, power: 3, jump: 4 },
+};
+
 function loadPlayerColors() {
   const p1skin   = localStorage.getItem('p1_skin');
   const p1hair   = localStorage.getItem('p1_hair');
@@ -69,6 +79,37 @@ function savePlayerColors() {
   localStorage.setItem('p2_skin',   playerColors.p2.skin);
   localStorage.setItem('p2_hair',   playerColors.p2.hair);
   localStorage.setItem('p2_outfit', playerColors.p2.body);
+}
+
+function loadPlayerBuildStats() {
+  ['p1', 'p2'].forEach(pKey => {
+    try {
+      const raw = localStorage.getItem(`${pKey}_build`);
+      if (raw) Object.assign(playerBuildStats[pKey], JSON.parse(raw));
+    } catch {}
+  });
+}
+
+function savePlayerBuildStats() {
+  ['p1', 'p2'].forEach(pKey => {
+    localStorage.setItem(`${pKey}_build`, JSON.stringify(playerBuildStats[pKey]));
+  });
+}
+
+// ── Stat-to-gameplay helpers ──────────────────────────────────
+function getPlayerSpeed(pKey) {
+  // stat 1→0.70x, stat 3→1.00x, stat 6→1.45x of base speed
+  return PLAYER_SPD * (0.55 + playerBuildStats[pKey].speed * 0.15);
+}
+
+function getPlayerJump(pKey) {
+  // stat 1→0.67x, stat 4→1.03x, stat 6→1.27x of base jump
+  return JUMP_VY * (0.55 + playerBuildStats[pKey].jump * 0.12);
+}
+
+function getPlayerPower(pKey) {
+  // stat 1→7, stat 3→10 (base), stat 6→13.5
+  return 10 + (playerBuildStats[pKey].power - 3) * 1.5;
 }
 
 // ── Stats ─────────────────────────────────────────────────────
@@ -232,8 +273,8 @@ document.addEventListener('keydown', e => {
   keys[e.code] = true;
   if (state === 'playing') {
     if (onlineMode === 'guest') return;
-    if (e.code === 'KeyW' && p1.onGround) { p1.vy = JUMP_VY; p1.onGround = false; }
-    if (!onlineMode && e.code === 'ArrowUp' && p2.onGround) { p2.vy = JUMP_VY; p2.onGround = false; }
+    if (e.code === 'KeyW' && p1.onGround) { p1.vy = getPlayerJump('p1'); p1.onGround = false; }
+    if (!onlineMode && e.code === 'ArrowUp' && p2.onGround) { p2.vy = getPlayerJump('p2'); p2.onGround = false; }
     if (!ball.served) {
       if (e.code === 'KeyW' && servingPlayer === 1) serveBall();
       if (!onlineMode && e.code === 'ArrowUp' && servingPlayer === 2) serveBall();
@@ -294,6 +335,7 @@ document.getElementById('btn-back-customize').addEventListener('click', () => {
 // Start game from customize screen
 document.getElementById('btn-start-game').addEventListener('click', () => {
   savePlayerColors();
+  savePlayerBuildStats();
   if (customizeOrigin === 'online') {
     // Hand off to online flow — caller (initOnlineMode) already set things up
     // so we just start the game
@@ -304,6 +346,18 @@ document.getElementById('btn-start-game').addEventListener('click', () => {
     resetGame();
     startGame();
   }
+});
+
+document.getElementById('btn-save-build').addEventListener('click', () => {
+  savePlayerColors();
+  savePlayerBuildStats();
+  const btn = document.getElementById('btn-save-build');
+  btn.textContent = 'SAVED ✓';
+  btn.style.background = 'linear-gradient(135deg, #00a86b, #007a4d)';
+  setTimeout(() => {
+    btn.textContent = 'SAVE BUILD';
+    btn.style.background = '';
+  }, 1500);
 });
 
 function startGame() {
@@ -353,6 +407,20 @@ function renderCustomize() {
         <div class="color-section-label">Outfit Color</div>
         <div class="swatch-row" id="${pKey}-outfit-swatches"></div>
       </div>
+      <div class="stat-builder">
+        <div class="stat-builder-header">
+          <span class="color-section-label">STATS BUILD</span>
+          <span class="stat-pool" id="${pKey}-pool"></span>
+        </div>
+        ${['speed','power','jump'].map(s => `
+        <div class="stat-row-ui">
+          <span class="stat-label-ui">${s === 'speed' ? 'SPD' : s === 'power' ? 'PWR' : 'JMP'}</span>
+          <button class="stat-btn stat-btn-minus" data-p="${pKey}" data-s="${s}">−</button>
+          <div class="stat-bar-track"><div class="stat-bar-fill" id="${pKey}-${s}-bar"></div></div>
+          <button class="stat-btn stat-btn-plus" data-p="${pKey}" data-s="${s}">+</button>
+          <span class="stat-val-ui" id="${pKey}-${s}-val"></span>
+        </div>`).join('')}
+      </div>
     `;
     panelsEl.appendChild(panel);
 
@@ -360,6 +428,40 @@ function renderCustomize() {
     buildSwatchRow(`${pKey}-hair-swatches`,   HAIR_PRESETS,   pKey, 'hair');
     buildSwatchRow(`${pKey}-outfit-swatches`, OUTFIT_PRESETS, pKey, 'body');
     drawAvatarPreview(pKey);
+    updateStatDisplay(pKey);
+    setupStatButtons(pKey);
+  });
+}
+
+function updateStatDisplay(pKey) {
+  const bs = playerBuildStats[pKey];
+  const pool = STAT_POOL - bs.speed - bs.power - bs.jump;
+  const poolEl = document.getElementById(`${pKey}-pool`);
+  if (poolEl) poolEl.textContent = pool > 0 ? `${pool} pts left` : 'BUILD FULL';
+  ['speed', 'power', 'jump'].forEach(stat => {
+    const barEl = document.getElementById(`${pKey}-${stat}-bar`);
+    const valEl = document.getElementById(`${pKey}-${stat}-val`);
+    if (barEl) barEl.style.width = (bs[stat] / STAT_MAX * 100) + '%';
+    if (valEl) valEl.textContent = bs[stat];
+  });
+}
+
+function setupStatButtons(pKey) {
+  const panel = document.getElementById(`customize-panel-${pKey}`);
+  if (!panel) return;
+  panel.querySelectorAll('.stat-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = btn.dataset.p;
+      const s = btn.dataset.s;
+      const delta = btn.classList.contains('stat-btn-plus') ? 1 : -1;
+      const bs = playerBuildStats[p];
+      const pool = STAT_POOL - bs.speed - bs.power - bs.jump;
+      const newVal = bs[s] + delta;
+      if (newVal < STAT_MIN || newVal > STAT_MAX) return;
+      if (delta > 0 && pool <= 0) return;
+      bs[s] = newVal;
+      updateStatDisplay(p);
+    });
   });
 }
 
@@ -614,8 +716,8 @@ function update() {
 
   // ── Player 1 movement ──────────────────────────────────────
   p1.vx = 0;
-  if (keys['KeyA']) { p1.vx = -PLAYER_SPD; p1.facing = -1; }
-  if (keys['KeyD']) { p1.vx =  PLAYER_SPD; p1.facing =  1; }
+  if (keys['KeyA']) { p1.vx = -getPlayerSpeed('p1'); p1.facing = -1; }
+  if (keys['KeyD']) { p1.vx =  getPlayerSpeed('p1'); p1.facing =  1; }
   p1.vy += GRAVITY;
   p1.x += p1.vx;
   p1.y += p1.vy;
@@ -624,8 +726,8 @@ function update() {
   // ── Player 2 movement ──────────────────────────────────────
   const p2k = onlineMode === 'host' ? guestKeys : keys;
   p2.vx = 0;
-  if (p2k['ArrowLeft'])  { p2.vx = -PLAYER_SPD; p2.facing = -1; }
-  if (p2k['ArrowRight']) { p2.vx =  PLAYER_SPD; p2.facing =  1; }
+  if (p2k['ArrowLeft'])  { p2.vx = -getPlayerSpeed('p2'); p2.facing = -1; }
+  if (p2k['ArrowRight']) { p2.vx =  getPlayerSpeed('p2'); p2.facing =  1; }
   p2.vy += GRAVITY;
   p2.x += p2.vx;
   p2.y += p2.vy;
@@ -717,7 +819,8 @@ function hitBallByPlayer(p) {
   const dy = ball.y - (p.y - 10);
   const d  = Math.sqrt(dx * dx + dy * dy) || 1;
 
-  const spd = 10 + Math.random() * 3;
+  const pKey = p.side === 1 ? 'p1' : 'p2';
+  const spd = getPlayerPower(pKey) + Math.random() * 3;
   ball.vx = (dx / d) * spd + (p.side === 1 ? 3 : -3);
   ball.vy = (dy / d) * spd - 8;
 
@@ -1374,6 +1477,10 @@ function captureState() {
       p1: { ...playerColors.p1 },
       p2: { ...playerColors.p2 },
     },
+    playerBuildStats: {
+      p1: { ...playerBuildStats.p1 },
+      p2: { ...playerBuildStats.p2 },
+    },
   };
 }
 
@@ -1394,6 +1501,10 @@ function applyState(s) {
   if (s.playerColors) {
     Object.assign(playerColors.p1, s.playerColors.p1);
     Object.assign(playerColors.p2, s.playerColors.p2);
+  }
+  if (s.playerBuildStats) {
+    Object.assign(playerBuildStats.p1, s.playerBuildStats.p1);
+    Object.assign(playerBuildStats.p2, s.playerBuildStats.p2);
   }
 
   document.getElementById('point-message').innerHTML  = s.pointMsg  || '';
@@ -1421,7 +1532,7 @@ function initOnlineMode(role) {
     netSocket.on('keys', keyState => {
       Object.assign(guestKeys, keyState);
       if (keyState['ArrowUp'] && !guestKeys['_upPrev'] && state === 'playing') {
-        if (p2.onGround) { p2.vy = JUMP_VY; p2.onGround = false; }
+        if (p2.onGround) { p2.vy = getPlayerJump('p2'); p2.onGround = false; }
         if (!ball.served && servingPlayer === 2) serveBall();
       }
       guestKeys['_upPrev'] = keyState['ArrowUp'];
@@ -1515,6 +1626,7 @@ document.getElementById('btn-join-room').addEventListener('click', () => {
 
 // ── Boot ──────────────────────────────────────────────────────
 loadPlayerColors();
+loadPlayerBuildStats();
 initBgElements();
 resetGame();
 showScreen('start');
