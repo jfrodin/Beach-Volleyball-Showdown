@@ -164,7 +164,7 @@ let seagulls = [];
 let bgTime = 0;
 
 // Tracks where we came from when entering customize (for back-button routing)
-let customizeOrigin = 'local'; // 'local' | 'online'
+let customizeOrigin = 'local'; // 'local' | 'online' | 'tournament'
 
 const keys = {};
 
@@ -176,6 +176,38 @@ const guestKeys = {};   // host mirrors guest's held keys here
 // ── Online control scheme (per device) ───────────────────────
 let onlineControls = localStorage.getItem('online_controls') || 'wasd';
 function saveOnlineControls() { localStorage.setItem('online_controls', onlineControls); }
+
+// ── Gamepad ───────────────────────────────────────────────────
+const gamepadPrev = [{ jump: false }, { jump: false }];
+
+function readPad(idx) {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  const p = pads[idx];
+  if (!p || !p.connected) return null;
+  const ax = p.axes[0] ?? 0;
+  const DEAD = 0.25;
+  return {
+    left:  ax < -DEAD || (p.buttons[14]?.pressed ?? false),
+    right: ax >  DEAD || (p.buttons[15]?.pressed ?? false),
+    // Any face button (Cross/A, Circle/B, Square/X, Triangle/Y) or D-pad Up
+    jump: (p.buttons[0]?.pressed ?? false) || (p.buttons[1]?.pressed ?? false) ||
+          (p.buttons[2]?.pressed ?? false) || (p.buttons[3]?.pressed ?? false) ||
+          (p.buttons[12]?.pressed ?? false),
+  };
+}
+
+// Show gamepad connection status in HUD
+window.addEventListener('gamepadconnected',    () => updateGamepadHUD());
+window.addEventListener('gamepaddisconnected', () => updateGamepadHUD());
+
+function updateGamepadHUD() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  const el = document.getElementById('gamepad-status');
+  if (!el) return;
+  el.innerHTML = [0, 1].map(i =>
+    pads[i]?.connected ? `<span class="gp-dot connected" title="P${i+1} gamepad">🎮</span>` : ''
+  ).join('');
+}
 
 // ── Bot ───────────────────────────────────────────────────────
 let botMode = false;
@@ -380,6 +412,16 @@ document.getElementById('btn-mute').addEventListener('click', () => {
 document.getElementById('btn-back-customize').addEventListener('click', () => {
   if (customizeOrigin === 'online') {
     showScreen('online');
+  } else if (customizeOrigin === 'tournament') {
+    // If we're still in the initial setup phase, go back to tournament setup
+    // If the tournament bracket already has matches played, go to bracket
+    const td = tournamentData;
+    if (td && (td.currentRound > 0 || td.currentMatchIdx > 0)) {
+      showTournamentBracket();
+    } else {
+      renderTournamentSetup();
+      showScreen('tournament');
+    }
   } else {
     showScreen('start');
   }
@@ -389,6 +431,18 @@ document.getElementById('btn-back-customize').addEventListener('click', () => {
 document.getElementById('btn-start-game').addEventListener('click', () => {
   savePlayerColors();
   savePlayerBuildStats();
+  if (customizeOrigin === 'tournament') {
+    const td = tournamentData;
+    const idx = td.customizeIdx;
+    td.players[idx].colors = { ...playerColors.p1 };
+    td.players[idx].build  = { ...playerBuildStats.p1 };
+    if (idx + 1 < td.players.length) {
+      openTournamentCustomize(idx + 1);
+    } else {
+      showTournamentBracket();
+    }
+    return;
+  }
   if (customizeOrigin === 'online') {
     // Guest sends their build to host so physics apply correctly
     if (onlineMode === 'guest' && netSocket) {
@@ -433,11 +487,12 @@ function renderCustomize() {
   panelsEl.innerHTML = '';
 
   // Determine which players to show
-  // Online guest → only P2 | Online host → only P1 | Bot → only P1 | Local → tab between P1/P2
+  // Online guest → only P2 | Online host/Bot/Tournament → only P1 | Local → tab between P1/P2
   const isOnlineGuest = onlineMode === 'guest';
   const isOnlineHost  = onlineMode === 'host';
-  const useTabs = !onlineMode && !botMode;
-  const playersToShow = isOnlineGuest ? [2] : (isOnlineHost || botMode) ? [1] : [customizeTab];
+  const isTournament  = customizeOrigin === 'tournament';
+  const useTabs = !onlineMode && !botMode && !isTournament;
+  const playersToShow = isOnlineGuest ? [2] : (isOnlineHost || botMode || isTournament) ? [1] : [customizeTab];
 
   // Tab bar for local mode
   if (useTabs) {
@@ -794,138 +849,197 @@ function updateBot() {
 }
 
 // ── Tournament ────────────────────────────────────────────────
+// ── Tournament: core bracket engine ──────────────────────────
+function tNextPow2(n) { let p = 4; while (p < n) p *= 2; return p; }
+
+function tBuildRounds(playerCount) {
+  const size = tNextPow2(playerCount);
+  const slots = [...Array(playerCount).keys(), ...Array(size - playerCount).fill('BYE')];
+  const rounds = [];
+  const r0 = [];
+  for (let i = 0; i < size; i += 2) r0.push({ a: slots[i], b: slots[i+1], winner: null });
+  rounds.push(r0);
+  let prev = size / 2;
+  while (prev > 1) {
+    prev /= 2;
+    rounds.push(Array.from({ length: prev }, () => ({ a: null, b: null, winner: null })));
+  }
+  return rounds;
+}
+
+function tRoundLabel(roundIdx, total) {
+  const fromEnd = total - 1 - roundIdx;
+  return ['FINAL', 'SEMIFINAL', 'QUARTERFINAL', 'ROUND OF 16'][fromEnd] ?? `ROUND ${roundIdx + 1}`;
+}
+
+function tPlayerName(idx) {
+  if (idx === 'BYE') return 'BYE';
+  if (idx === null)  return '?';
+  return tournamentData.players[idx].name;
+}
+
+function tResolveMatch(round, mi, winnerIdx) {
+  const td = tournamentData;
+  td.rounds[round][mi].winner = winnerIdx;
+  if (round + 1 < td.rounds.length) {
+    const slot = mi % 2 === 0 ? 'a' : 'b';
+    td.rounds[round + 1][Math.floor(mi / 2)][slot] = winnerIdx;
+  }
+}
+
+function tAdvanceByes() {
+  const td = tournamentData;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    if (td.currentRound >= td.rounds.length) break;
+    const round = td.rounds[td.currentRound];
+    if (td.currentMatchIdx >= round.length) {
+      td.currentRound++; td.currentMatchIdx = 0; changed = true; continue;
+    }
+    const m = round[td.currentMatchIdx];
+    if (m.a === 'BYE' || m.b === 'BYE') {
+      tResolveMatch(td.currentRound, td.currentMatchIdx, m.a === 'BYE' ? m.b : m.a);
+      td.currentMatchIdx++; changed = true;
+    }
+  }
+}
+
+function initTournament(names) {
+  tournamentData = {
+    players: names.map((name, i) => ({
+      name,
+      colors: { skin: SKIN_PRESETS[0], hair: HAIR_PRESETS[0], body: OUTFIT_PRESETS[i % OUTFIT_PRESETS.length] },
+      build: { speed: 3, power: 3, jump: 4 },
+    })),
+    rounds: tBuildRounds(names.length),
+    currentRound: 0,
+    currentMatchIdx: 0,
+    customizeIdx: 0,
+  };
+  tAdvanceByes();
+}
+
+function loadTournamentMatch() {
+  const td = tournamentData;
+  const m = td.rounds[td.currentRound][td.currentMatchIdx];
+  const pa = td.players[m.a], pb = td.players[m.b];
+  Object.assign(playerColors.p1, pa.colors);      Object.assign(playerColors.p2, pb.colors);
+  Object.assign(playerBuildStats.p1, pa.build);   Object.assign(playerBuildStats.p2, pb.build);
+}
+
+function finishTournamentMatch(winner) {
+  const td = tournamentData;
+  const m = td.rounds[td.currentRound][td.currentMatchIdx];
+  tResolveMatch(td.currentRound, td.currentMatchIdx, winner === 1 ? m.a : m.b);
+  td.currentMatchIdx++;
+  tAdvanceByes();
+  showTournamentBracket();
+}
+
+function showTournamentBracket() { renderBracketScreen(); showScreen('tournament'); }
+
+function renderBracketScreen() {
+  const td = tournamentData;
+  const el = document.getElementById('tournament-content');
+  const lastRound = td.rounds[td.rounds.length - 1];
+  const champion = lastRound[0].winner;
+
+  let html = '';
+  if (champion !== null) {
+    html += `<div class="bracket-champion">🏆 ${tPlayerName(champion)} WINS!</div>`;
+  } else {
+    const m = td.rounds[td.currentRound]?.[td.currentMatchIdx];
+    if (m) html += `<div class="bracket-next">▶ ${tPlayerName(m.a)} vs ${tPlayerName(m.b)}</div>`;
+  }
+
+  html += `<div class="bracket-rounds">`;
+  td.rounds.forEach((round, ri) => {
+    html += `<div class="bracket-round"><div class="bracket-round-label">${tRoundLabel(ri, td.rounds.length)}</div>`;
+    round.forEach((m, mi) => {
+      const isActive = !champion && ri === td.currentRound && mi === td.currentMatchIdx;
+      const wc = (idx) => m.winner !== null ? (m.winner === idx ? 'winner' : 'loser') : '';
+      html += `<div class="bracket-match${isActive ? ' active' : ''}">
+        <div class="bracket-player ${wc(m.a)}">${tPlayerName(m.a)}</div>
+        <div class="bracket-player ${wc(m.b)}">${tPlayerName(m.b)}</div>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+  html += `</div>`;
+
+  if (!champion) {
+    const m = td.rounds[td.currentRound]?.[td.currentMatchIdx];
+    if (m) html += `<button id="btn-play-match" class="btn-primary" style="margin-top:18px;padding:11px 36px">
+      ▶ PLAY: ${tPlayerName(m.a)} vs ${tPlayerName(m.b)}</button>`;
+  }
+  html += `<button id="btn-tournament-back" class="btn-back">← Main Menu</button>`;
+
+  el.innerHTML = html;
+  document.getElementById('btn-play-match')?.addEventListener('click', () => {
+    loadTournamentMatch(); botMode = false; onlineMode = null; resetGame(); startGame();
+  });
+  document.getElementById('btn-tournament-back')?.addEventListener('click', () => {
+    tournamentData = null; showScreen('start');
+  });
+}
+
+// ── Tournament: setup screen ──────────────────────────────────
+let tournamentPlayerCount = 4;
+
 function renderTournamentSetup() {
   const el = document.getElementById('tournament-content');
+  const count = tournamentPlayerCount;
   el.innerHTML = `
     <h2 class="tournament-title">TOURNAMENT</h2>
-    <p class="tournament-sub">Enter 4 player names</p>
-    <div class="tournament-names">
-      ${[1,2,3,4].map(i => `
+    <div class="t-count-row">
+      <button class="stat-btn" id="t-count-minus">−</button>
+      <span class="t-count-val">${count} PLAYERS</span>
+      <button class="stat-btn" id="t-count-plus">+</button>
+    </div>
+    <div class="tournament-names" id="t-names-list">
+      ${Array.from({length: count}, (_,i) => `
         <div class="t-name-row">
-          <span class="t-name-label">P${i}</span>
-          <input class="t-name-input" id="t-name-${i}" type="text" maxlength="12" placeholder="Player ${i}" value="Player ${i}" />
+          <span class="t-name-label">P${i+1}</span>
+          <input class="t-name-input" id="t-name-${i+1}" maxlength="12" placeholder="Player ${i+1}" value="Player ${i+1}" />
         </div>`).join('')}
     </div>
-    <button id="btn-start-tournament" class="btn-primary" style="margin-top:24px;padding:12px 48px">START TOURNAMENT</button>
+    <button id="btn-start-tournament" class="btn-primary" style="margin-top:20px;padding:11px 40px">CUSTOMIZE &amp; START</button>
     <button id="btn-back-tournament" class="btn-back">← Back</button>
   `;
+  document.getElementById('t-count-minus').addEventListener('click', () => {
+    if (tournamentPlayerCount > 4) { tournamentPlayerCount--; renderTournamentSetup(); }
+  });
+  document.getElementById('t-count-plus').addEventListener('click', () => {
+    if (tournamentPlayerCount < 16) { tournamentPlayerCount++; renderTournamentSetup(); }
+  });
   document.getElementById('btn-start-tournament').addEventListener('click', () => {
-    const names = [1,2,3,4].map(i => document.getElementById(`t-name-${i}`).value.trim() || `Player ${i}`);
+    const names = Array.from({length: count}, (_,i) =>
+      (document.getElementById(`t-name-${i+1}`)?.value.trim() || `Player ${i+1}`));
     initTournament(names);
-    showTournamentBracket();
+    openTournamentCustomize(0);
   });
   document.getElementById('btn-back-tournament').addEventListener('click', () => showScreen('start'));
 }
 
-function initTournament(names) {
-  // Store per-player colors/builds from current playerColors/playerBuildStats
-  const players = names.map((name, i) => ({
-    name,
-    colors: { skin: '#FFDAB9', hair: '#1a1a1a', body: OUTFIT_PRESETS[i % OUTFIT_PRESETS.length] },
-    build:  { speed: 3, power: 3, jump: 4 },
-  }));
-  tournamentData = {
-    players,
-    matches: [
-      { a: 0, b: 1, winner: null }, // SF1
-      { a: 2, b: 3, winner: null }, // SF2
-      { a: null, b: null, winner: null }, // Final
-    ],
-    current: 0,
-  };
-}
-
-function loadTournamentMatch(matchIdx) {
-  const m = tournamentData.matches[matchIdx];
-  const pa = tournamentData.players[m.a];
-  const pb = tournamentData.players[m.b];
-  Object.assign(playerColors.p1, pa.colors);
-  Object.assign(playerColors.p2, pb.colors);
-  Object.assign(playerBuildStats.p1, pa.build);
-  Object.assign(playerBuildStats.p2, pb.build);
-}
-
-function finishTournamentMatch(winner) {
-  const m = tournamentData.matches[tournamentData.current];
-  const winnerIdx = winner === 1 ? m.a : m.b;
-  m.winner = winnerIdx;
-
-  if (tournamentData.current === 0) {
-    tournamentData.matches[2].a = winnerIdx;
-  } else if (tournamentData.current === 1) {
-    tournamentData.matches[2].b = winnerIdx;
-  }
-
-  tournamentData.current++;
-  showTournamentBracket();
-}
-
-function showTournamentBracket() {
-  renderBracketScreen();
-  showScreen('tournament');
-}
-
-function renderBracketScreen() {
-  const el = document.getElementById('tournament-content');
+// ── Tournament: per-player sequential customization ───────────
+function openTournamentCustomize(idx) {
   const td = tournamentData;
-  const allDone = td.matches[2].winner !== null;
-
-  const matchHTML = (m, label) => {
-    const pa = m.a !== null ? td.players[m.a].name : '?';
-    const pb = m.b !== null ? td.players[m.b].name : '?';
-    const wa = m.winner !== null && m.winner === m.a;
-    const wb = m.winner !== null && m.winner === m.b;
-    return `
-      <div class="bracket-match">
-        <div class="bracket-label">${label}</div>
-        <div class="bracket-player ${wa ? 'winner' : m.winner !== null ? 'loser' : ''}">${pa}</div>
-        <div class="bracket-vs">VS</div>
-        <div class="bracket-player ${wb ? 'winner' : m.winner !== null ? 'loser' : ''}">${pb}</div>
-      </div>`;
-  };
-
-  if (allDone) {
-    const champ = td.players[td.matches[2].winner].name;
-    el.innerHTML = `
-      <div class="bracket-champion">🏆 ${champ} WINS THE TOURNAMENT!</div>
-      <div class="bracket-grid">
-        ${matchHTML(td.matches[0], 'SEMIFINAL 1')}
-        ${matchHTML(td.matches[1], 'SEMIFINAL 2')}
-        ${matchHTML(td.matches[2], 'FINAL')}
-      </div>
-      <button id="btn-tournament-back" class="btn-back" style="margin-top:24px">← Main Menu</button>`;
-    setTimeout(() => {
-      const b = document.getElementById('btn-tournament-back');
-      if (b) b.addEventListener('click', () => { tournamentData = null; showScreen('start'); });
-    }, 0);
-  } else {
-    const nextMatch = td.matches[td.current];
-    const pa = nextMatch.a !== null ? td.players[nextMatch.a].name : '?';
-    const pb = nextMatch.b !== null ? td.players[nextMatch.b].name : '?';
-    el.innerHTML = `
-      <div class="bracket-next">Next: ${pa} vs ${pb}</div>
-      <div class="bracket-grid">
-        ${matchHTML(td.matches[0], 'SEMIFINAL 1')}
-        ${matchHTML(td.matches[1], 'SEMIFINAL 2')}
-        ${matchHTML(td.matches[2], 'FINAL')}
-      </div>
-      <button id="btn-play-match" class="btn-primary" style="margin-top:24px;padding:12px 48px">
-        PLAY: ${pa} vs ${pb}
-      </button>
-      <button id="btn-tournament-back" class="btn-back">← Main Menu</button>`;
-    setTimeout(() => {
-      const bp = document.getElementById('btn-play-match');
-      if (bp) bp.addEventListener('click', () => {
-        loadTournamentMatch(td.current);
-        botMode = false;
-        onlineMode = null;
-        resetGame();
-        startGame();
-      });
-      const bb = document.getElementById('btn-tournament-back');
-      if (bb) bb.addEventListener('click', () => { tournamentData = null; showScreen('start'); });
-    }, 0);
-  }
+  const p = td.players[idx];
+  // Load this player's current data into the p1 slot for editing
+  Object.assign(playerColors.p1, p.colors);
+  Object.assign(playerBuildStats.p1, p.build);
+  customizeTab = 1;
+  customizeOrigin = 'tournament';
+  td.customizeIdx = idx;
+  renderCustomize();
+  // Override the title and button text
+  const title = document.querySelector('.customize-title');
+  if (title) title.textContent = `${p.name.toUpperCase()} — CUSTOMIZE`;
+  const btn = document.getElementById('btn-start-game');
+  const isLast = idx === td.players.length - 1;
+  if (btn) btn.textContent = isLast ? 'START TOURNAMENT' : 'NEXT PLAYER →';
+  showScreen('customize');
 }
 
 // ── Serve ─────────────────────────────────────────────────────
@@ -987,11 +1101,18 @@ function update() {
   });
 
   // ── Player 1 movement ──────────────────────────────────────
+  const gp1 = onlineMode !== 'guest' ? readPad(0) : null;
   const p1LeftKey  = (onlineMode === 'host' && onlineControls === 'arrows') ? 'ArrowLeft'  : 'KeyA';
   const p1RightKey = (onlineMode === 'host' && onlineControls === 'arrows') ? 'ArrowRight' : 'KeyD';
   p1.vx = 0;
-  if (keys[p1LeftKey])  { p1.vx = -getPlayerSpeed('p1'); p1.facing = -1; }
-  if (keys[p1RightKey]) { p1.vx =  getPlayerSpeed('p1'); p1.facing =  1; }
+  if (keys[p1LeftKey]  || gp1?.left)  { p1.vx = -getPlayerSpeed('p1'); p1.facing = -1; }
+  if (keys[p1RightKey] || gp1?.right) { p1.vx =  getPlayerSpeed('p1'); p1.facing =  1; }
+  // Gamepad jump/serve for P1 (keyboard jump handled in keydown)
+  if (gp1?.jump && !gamepadPrev[0].jump) {
+    if (p1.onGround) { p1.vy = getPlayerJump('p1'); p1.onGround = false; }
+    if (!ball.served && servingPlayer === 1) serveBall();
+  }
+  gamepadPrev[0].jump = gp1?.jump ?? false;
   p1.vy += GRAVITY;
   p1.x += p1.vx;
   p1.y += p1.vy;
@@ -1002,10 +1123,17 @@ function update() {
   if (botMode) {
     updateBot(); // sets p2.vx directly
   } else {
+    const gp2 = (!onlineMode) ? readPad(1) : null;
     const p2k = onlineMode === 'host' ? guestKeys : keys;
     p2.vx = 0;
-    if (p2k['ArrowLeft'])  { p2.vx = -getPlayerSpeed('p2'); p2.facing = -1; }
-    if (p2k['ArrowRight']) { p2.vx =  getPlayerSpeed('p2'); p2.facing =  1; }
+    if (p2k['ArrowLeft']  || gp2?.left)  { p2.vx = -getPlayerSpeed('p2'); p2.facing = -1; }
+    if (p2k['ArrowRight'] || gp2?.right) { p2.vx =  getPlayerSpeed('p2'); p2.facing =  1; }
+    // Gamepad jump/serve for P2
+    if (gp2?.jump && !gamepadPrev[1].jump) {
+      if (p2.onGround) { p2.vy = getPlayerJump('p2'); p2.onGround = false; }
+      if (!ball.served && servingPlayer === 2) serveBall();
+    }
+    gamepadPrev[1].jump = gp2?.jump ?? false;
   }
   p2.x += p2.vx;
   p2.y += p2.vy;
@@ -1841,10 +1969,11 @@ function initOnlineMode(role) {
       const lk = onlineControls === 'wasd' ? 'KeyA'    : 'ArrowLeft';
       const rk = onlineControls === 'wasd' ? 'KeyD'    : 'ArrowRight';
       const uk = onlineControls === 'wasd' ? 'KeyW'    : 'ArrowUp';
-      const up = !!keys[uk];
+      const gp = readPad(0); // Guest uses gamepad 0 on their own machine
+      const up = !!keys[uk] || (gp?.jump ?? false);
       netSocket.emit('keys', {
-        ArrowLeft:  !!keys[lk],
-        ArrowRight: !!keys[rk],
+        ArrowLeft:  !!keys[lk] || (gp?.left  ?? false),
+        ArrowRight: !!keys[rk] || (gp?.right ?? false),
         ArrowUp:    up,
         _upPrev:    prevUp,
       });
@@ -1918,6 +2047,17 @@ document.getElementById('btn-join-room').addEventListener('click', () => {
     document.getElementById('online-status').textContent = `Error: ${msg}`;
   });
 });
+
+// ── Responsive scaling ────────────────────────────────────────
+function scaleGame() {
+  const scale = Math.min(window.innerWidth / 1350, window.innerHeight / 600);
+  const app = document.getElementById('app');
+  app.style.transform = `scale(${scale})`;
+  app.style.left = Math.round((window.innerWidth  - 1350 * scale) / 2) + 'px';
+  app.style.top  = Math.round((window.innerHeight - 600  * scale) / 2) + 'px';
+}
+window.addEventListener('resize', scaleGame);
+scaleGame();
 
 // ── Boot ──────────────────────────────────────────────────────
 loadPlayerColors();

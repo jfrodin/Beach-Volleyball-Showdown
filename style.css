@@ -6,18 +6,16 @@
 
 body {
   background: #05001a;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
   font-family: 'Segoe UI', system-ui, sans-serif;
   overflow: hidden;
+  margin: 0;
 }
 
 #app {
-  position: relative;
+  position: absolute;
   width: 1350px;
   height: 600px;
+  transform-origin: top left;
 }
 
 #gameCanvas {
@@ -40,13 +38,23 @@ body {
   inset: 0;
   display: none;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start;
   pointer-events: none;
+  overflow-y: auto;
+  padding: 12px 0;
+  box-sizing: border-box;
 }
 
 .screen.active {
   display: flex;
   pointer-events: all;
+}
+
+/* Game/point/gameover screens don't need scrolling — keep centered */
+#screen-game, #screen-point, #screen-gameover {
+  align-items: center;
+  overflow: hidden;
+  padding: 0;
 }
 
 /* ── START SCREEN ─────────────────────────────────────────── */
@@ -157,13 +165,14 @@ body {
 }
 
 .btn-menu-ghost {
-  background: transparent;
-  border: 1px solid rgba(255,255,255,0.12) !important;
-  color: rgba(255,255,255,0.4);
+  background: rgba(0, 245, 255, 0.05);
+  border: 1px solid rgba(0, 245, 255, 0.25) !important;
+  color: rgba(0, 245, 255, 0.75);
 }
 .btn-menu-ghost:hover {
-  border-color: rgba(255,255,255,0.3) !important;
-  color: rgba(255,255,255,0.7);
+  background: rgba(0, 245, 255, 0.12);
+  border-color: rgba(0, 245, 255, 0.5) !important;
+  color: #00f5ff;
 }
 
 /* ── Shared button styles ─────────────────────────────────── */
@@ -400,7 +409,7 @@ body {
   background: rgba(10, 5, 25, 0.94);
   border: 2px solid rgba(255, 180, 50, 0.4);
   border-radius: 20px;
-  padding: 36px 44px;
+  padding: 28px 44px;
   text-align: center;
   backdrop-filter: blur(10px);
   box-shadow: 0 0 40px rgba(255, 150, 0, 0.2);
@@ -624,11 +633,11 @@ body {
   background: rgba(5, 0, 20, 0.94);
   border: 1px solid rgba(255, 215, 0, 0.2);
   border-radius: 20px;
-  padding: 40px 48px;
+  padding: 28px 48px;
   text-align: center;
   backdrop-filter: blur(14px);
   box-shadow: 0 0 60px rgba(255,215,0,0.08);
-  max-width: 600px;
+  max-width: 900px;
   width: 94%;
 }
 
