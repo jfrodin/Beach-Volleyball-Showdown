@@ -586,6 +586,170 @@ body {
   line-height: 1;
 }
 
+/* ── CUSTOMIZE TABS ──────────────────────────────────────── */
+.customize-tabs {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+.customize-tab-btn {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.4);
+  padding: 8px 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 3px;
+  transition: all 0.15s;
+  pointer-events: all;
+}
+.customize-tab-btn.active {
+  background: rgba(255,215,0,0.12);
+  border-color: #FFD700;
+  color: #FFD700;
+  box-shadow: 0 0 12px rgba(255,215,0,0.25);
+}
+.customize-tab-btn:hover:not(.active) {
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+}
+
+/* ── TOURNAMENT ───────────────────────────────────────────── */
+.tournament-card {
+  background: rgba(5, 0, 20, 0.94);
+  border: 1px solid rgba(255, 215, 0, 0.2);
+  border-radius: 20px;
+  padding: 40px 48px;
+  text-align: center;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 0 60px rgba(255,215,0,0.08);
+  max-width: 600px;
+  width: 94%;
+}
+
+.tournament-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 3rem;
+  letter-spacing: 4px;
+  color: #FFD700;
+  text-shadow: 0 0 20px rgba(255,215,0,0.6);
+  margin-bottom: 6px;
+}
+
+.tournament-sub {
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.35);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+}
+
+.tournament-names {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.t-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.t-name-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgba(255,215,0,0.6);
+  letter-spacing: 2px;
+  width: 24px;
+  flex-shrink: 0;
+}
+
+.t-name-input {
+  flex: 1;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 1px;
+  padding: 8px 14px;
+  outline: none;
+  transition: border-color 0.2s;
+  pointer-events: all;
+}
+.t-name-input:focus { border-color: rgba(255,215,0,0.5); }
+
+/* Bracket */
+.bracket-grid {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 20px 0;
+}
+
+.bracket-match {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 16px 20px;
+  min-width: 140px;
+  text-align: center;
+}
+
+.bracket-label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.3);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.bracket-player {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.7);
+  padding: 4px 0;
+}
+.bracket-player.winner {
+  color: #FFD700;
+  text-shadow: 0 0 10px rgba(255,215,0,0.5);
+}
+.bracket-player.loser { color: rgba(255,255,255,0.3); text-decoration: line-through; }
+
+.bracket-vs {
+  font-size: 0.65rem;
+  color: rgba(255,255,255,0.2);
+  letter-spacing: 2px;
+  margin: 4px 0;
+}
+
+.bracket-next {
+  font-size: 0.85rem;
+  color: #00f5ff;
+  letter-spacing: 2px;
+  margin-bottom: 4px;
+  text-shadow: 0 0 8px rgba(0,245,255,0.5);
+}
+
+.bracket-champion {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.8rem;
+  color: #FFD700;
+  text-shadow: 0 0 20px rgba(255,215,0,0.7);
+  letter-spacing: 3px;
+  margin-bottom: 16px;
+}
+
 /* ── PERSISTENT MUTE BUTTON ──────────────────────────────── */
 #btn-mute {
   position: absolute;

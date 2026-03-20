@@ -22,10 +22,36 @@
           </div>
           <div class="start-btn-col">
             <button id="btn-start" class="btn-primary btn-menu">LOCAL PLAY</button>
+            <button id="btn-vs-bot" class="btn-menu btn-menu-secondary">VS BOT</button>
             <button id="btn-online" class="btn-menu btn-menu-secondary">ONLINE</button>
-            <button id="btn-customize-menu" class="btn-menu btn-menu-secondary">CUSTOMIZE</button>
+            <button id="btn-tournament" class="btn-menu btn-menu-secondary">TOURNAMENT</button>
+            <button id="btn-customize-menu" class="btn-menu btn-menu-ghost">CUSTOMIZE</button>
             <button id="btn-stats" class="btn-menu btn-menu-ghost">STATS</button>
           </div>
+        </div>
+      </div>
+
+      <!-- BOT DIFFICULTY SCREEN -->
+      <div id="screen-bot" class="screen">
+        <div class="title-card">
+          <div class="game-logo" style="margin-bottom:28px">
+            <div class="logo-top">CHALLENGE</div>
+            <div class="logo-main" style="font-size:3rem">VS BOT</div>
+          </div>
+          <p style="color:rgba(255,255,255,0.4);font-size:0.8rem;letter-spacing:3px;margin-bottom:20px">DIFFICULTY</p>
+          <div class="start-btn-col">
+            <button class="diff-btn btn-menu" data-diff="easy" style="background:rgba(0,255,100,0.12);border:1px solid rgba(0,255,100,0.4);color:#00ff9d">EASY</button>
+            <button class="diff-btn btn-menu" data-diff="medium" style="background:rgba(255,180,0,0.12);border:1px solid rgba(255,180,0,0.4);color:#ffb400">MEDIUM</button>
+            <button class="diff-btn btn-menu" data-diff="hard" style="background:rgba(255,45,120,0.12);border:1px solid rgba(255,45,120,0.4);color:#ff2d78">HARD</button>
+          </div>
+          <button id="btn-back-bot" class="btn-back">← Back</button>
+        </div>
+      </div>
+
+      <!-- TOURNAMENT SCREEN -->
+      <div id="screen-tournament" class="screen">
+        <div class="tournament-card">
+          <div id="tournament-content"></div>
         </div>
       </div>
 
