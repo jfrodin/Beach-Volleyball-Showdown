@@ -47,6 +47,12 @@ io.on('connection', socket => {
     if (room && room.host) room.host.emit('keys', keyState);
   });
 
+  // Guest → Host: build stats (so host can apply them to physics)
+  socket.on('guest-build', build => {
+    const room = rooms.get(socket.roomCode);
+    if (room && room.host) room.host.emit('guest-build', build);
+  });
+
   socket.on('disconnect', () => {
     const code = socket.roomCode;
     const room = rooms.get(code);

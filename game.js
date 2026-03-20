@@ -337,8 +337,10 @@ document.getElementById('btn-start-game').addEventListener('click', () => {
   savePlayerColors();
   savePlayerBuildStats();
   if (customizeOrigin === 'online') {
-    // Hand off to online flow — caller (initOnlineMode) already set things up
-    // so we just start the game
+    // Guest sends their build to host so physics apply correctly
+    if (onlineMode === 'guest' && netSocket) {
+      netSocket.emit('guest-build', { ...playerBuildStats.p2 });
+    }
     resetGame();
     startGame();
   } else {
@@ -1536,6 +1538,11 @@ function initOnlineMode(role) {
         if (!ball.served && servingPlayer === 2) serveBall();
       }
       guestKeys['_upPrev'] = keyState['ArrowUp'];
+    });
+
+    // Guest sends their build stats before game starts — apply to P2 physics
+    netSocket.on('guest-build', build => {
+      Object.assign(playerBuildStats.p2, build);
     });
 
     // Host goes to customize (both panels) then starts game
