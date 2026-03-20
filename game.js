@@ -173,6 +173,10 @@ let onlineMode = null;  // null | 'host' | 'guest'
 let netSocket  = null;
 const guestKeys = {};   // host mirrors guest's held keys here
 
+// ── Online control scheme (per device) ───────────────────────
+let onlineControls = localStorage.getItem('online_controls') || 'wasd';
+function saveOnlineControls() { localStorage.setItem('online_controls', onlineControls); }
+
 // ── Entity factories ─────────────────────────────────────────
 function makePlayer(side) {
   const x = side === 1 ? W * 0.25 : W * 0.75;
@@ -273,10 +277,11 @@ document.addEventListener('keydown', e => {
   keys[e.code] = true;
   if (state === 'playing') {
     if (onlineMode === 'guest') return;
-    if (e.code === 'KeyW' && p1.onGround) { p1.vy = getPlayerJump('p1'); p1.onGround = false; }
+    const p1JumpKey = (onlineMode === 'host' && onlineControls === 'arrows') ? 'ArrowUp' : 'KeyW';
+    if (e.code === p1JumpKey && p1.onGround) { p1.vy = getPlayerJump('p1'); p1.onGround = false; }
     if (!onlineMode && e.code === 'ArrowUp' && p2.onGround) { p2.vy = getPlayerJump('p2'); p2.onGround = false; }
     if (!ball.served) {
-      if (e.code === 'KeyW' && servingPlayer === 1) serveBall();
+      if (e.code === p1JumpKey && servingPlayer === 1) serveBall();
       if (!onlineMode && e.code === 'ArrowUp' && servingPlayer === 2) serveBall();
     }
   }
@@ -301,11 +306,19 @@ document.addEventListener('keydown', onFirstInteraction);
 
 document.getElementById('btn-start').addEventListener('click', () => {
   ensureMusic();
+  onlineMode = null;
+  customizeOrigin = 'local';
+  resetGame();
+  startGame();
+});
+
+document.getElementById('btn-restart').addEventListener('click', () => {
   customizeOrigin = 'local';
   openCustomize();
 });
 
-document.getElementById('btn-restart').addEventListener('click', () => {
+document.getElementById('btn-customize-menu').addEventListener('click', () => {
+  ensureMusic();
   customizeOrigin = 'local';
   openCustomize();
 });
@@ -424,6 +437,28 @@ function renderCustomize() {
         </div>`).join('')}
       </div>
     `;
+    // Controls picker only for your own panel in online mode
+    const isMyPanel = (onlineMode === 'host' && playerNum === 1) || (onlineMode === 'guest' && playerNum === 2);
+    if (onlineMode && isMyPanel) {
+      const ctrlDiv = document.createElement('div');
+      ctrlDiv.className = 'controls-picker';
+      ctrlDiv.innerHTML = `
+        <div class="color-section-label" style="margin-bottom:8px">CONTROLS</div>
+        <div style="display:flex;gap:8px">
+          <button class="ctrl-btn${onlineControls === 'wasd' ? ' selected' : ''}" data-scheme="wasd">WASD</button>
+          <button class="ctrl-btn${onlineControls === 'arrows' ? ' selected' : ''}" data-scheme="arrows">ARROWS</button>
+        </div>
+      `;
+      panel.appendChild(ctrlDiv);
+      ctrlDiv.querySelectorAll('.ctrl-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          onlineControls = btn.dataset.scheme;
+          saveOnlineControls();
+          ctrlDiv.querySelectorAll('.ctrl-btn').forEach(b => b.classList.toggle('selected', b.dataset.scheme === onlineControls));
+        });
+      });
+    }
+
     panelsEl.appendChild(panel);
 
     buildSwatchRow(`${pKey}-skin-swatches`,   SKIN_PRESETS,   pKey, 'skin');
@@ -717,9 +752,11 @@ function update() {
   });
 
   // ── Player 1 movement ──────────────────────────────────────
+  const p1LeftKey  = (onlineMode === 'host' && onlineControls === 'arrows') ? 'ArrowLeft'  : 'KeyA';
+  const p1RightKey = (onlineMode === 'host' && onlineControls === 'arrows') ? 'ArrowRight' : 'KeyD';
   p1.vx = 0;
-  if (keys['KeyA']) { p1.vx = -getPlayerSpeed('p1'); p1.facing = -1; }
-  if (keys['KeyD']) { p1.vx =  getPlayerSpeed('p1'); p1.facing =  1; }
+  if (keys[p1LeftKey])  { p1.vx = -getPlayerSpeed('p1'); p1.facing = -1; }
+  if (keys[p1RightKey]) { p1.vx =  getPlayerSpeed('p1'); p1.facing =  1; }
   p1.vy += GRAVITY;
   p1.x += p1.vx;
   p1.y += p1.vy;
@@ -1098,13 +1135,15 @@ function drawBackground() {
   ctx.restore();
 
   // ── Zone labels ──────────────────────────────────────────────
-  ctx.save();
-  ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.globalAlpha = 0.3;
-  ctx.fillStyle = '#00f5ff';
-  ctx.fillText('P1', (COURT_LEFT + NET_X) / 2, GROUND_Y + 20);
-  ctx.fillStyle = '#ff2d78';
-  ctx.fillText('P2', (NET_X + COURT_RIGHT) / 2, GROUND_Y + 20);
-  ctx.restore();
+  if (state === 'playing' || state === 'point') {
+    ctx.save();
+    ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.globalAlpha = 0.3;
+    ctx.fillStyle = '#00f5ff';
+    ctx.fillText('P1', (COURT_LEFT + NET_X) / 2, GROUND_Y + 20);
+    ctx.fillStyle = '#ff2d78';
+    ctx.fillText('P2', (NET_X + COURT_RIGHT) / 2, GROUND_Y + 20);
+    ctx.restore();
+  }
 }
 
 function drawPalmTree(x, groundY, dir) {
@@ -1553,10 +1592,13 @@ function initOnlineMode(role) {
   if (role === 'guest') {
     let prevUp = false;
     const sendKeys = () => {
-      const up = !!keys['ArrowUp'];
+      const lk = onlineControls === 'wasd' ? 'KeyA'    : 'ArrowLeft';
+      const rk = onlineControls === 'wasd' ? 'KeyD'    : 'ArrowRight';
+      const uk = onlineControls === 'wasd' ? 'KeyW'    : 'ArrowUp';
+      const up = !!keys[uk];
       netSocket.emit('keys', {
-        ArrowLeft:  !!keys['ArrowLeft'],
-        ArrowRight: !!keys['ArrowRight'],
+        ArrowLeft:  !!keys[lk],
+        ArrowRight: !!keys[rk],
         ArrowUp:    up,
         _upPrev:    prevUp,
       });

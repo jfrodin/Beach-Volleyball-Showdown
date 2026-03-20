@@ -4,34 +4,27 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Beach Volleyball Showdown</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="app">
     <canvas id="gameCanvas" width="1350" height="600"></canvas>
+    <button id="btn-mute" title="Toggle Music">🔊</button>
     <div id="ui-overlay">
       <div id="screen-start" class="screen active">
         <div class="title-card">
-          <h1>🏐 Beach Volleyball</h1>
-          <h2>Showdown</h2>
-          <div class="controls-grid">
-            <div class="player-controls p1">
-              <h3>Player 1</h3>
-              <p><kbd>A</kbd><kbd>D</kbd> Move</p>
-              <p><kbd>W</kbd> Jump / Hit</p>
-            </div>
-            <div class="vs-badge">VS</div>
-            <div class="player-controls p2">
-              <h3>Player 2</h3>
-              <p><kbd>←</kbd><kbd>→</kbd> Move</p>
-              <p><kbd>↑</kbd> Jump / Hit</p>
-            </div>
+          <div class="game-logo">
+            <div class="logo-top">BEACH VOLLEYBALL</div>
+            <div class="logo-main">SHOWDOWN</div>
           </div>
-          <p class="subtitle">First to <strong>7 points</strong> wins the set · Best of 3</p>
-          <div class="start-btn-row">
-            <button id="btn-start" class="btn-primary">LOCAL PLAY</button>
-            <button id="btn-online" class="btn-secondary">ONLINE</button>
-            <button id="btn-stats" class="btn-secondary">STATS</button>
+          <div class="start-btn-col">
+            <button id="btn-start" class="btn-primary btn-menu">LOCAL PLAY</button>
+            <button id="btn-online" class="btn-menu btn-menu-secondary">ONLINE</button>
+            <button id="btn-customize-menu" class="btn-menu btn-menu-secondary">CUSTOMIZE</button>
+            <button id="btn-stats" class="btn-menu btn-menu-ghost">STATS</button>
           </div>
         </div>
       </div>
@@ -91,8 +84,7 @@
           <div class="set-info">
             <span id="set-label">Set 1</span>
           </div>
-          <button id="btn-mute" title="Toggle Music" style="background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:1rem;line-height:1;pointer-events:all;">🔊</button>
-          <div class="score-panel p2-score">
+<div class="score-panel p2-score">
             <div class="set-dots" id="sets-p2"></div>
             <span class="score-val" id="score-p2">0</span>
             <span class="player-label">P2</span>
