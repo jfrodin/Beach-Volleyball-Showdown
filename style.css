@@ -76,6 +76,38 @@ body {
   text-align: center;
 }
 
+/* ── MOBILE JUMP BUTTONS ──────────────────────────────────── */
+#mobile-jump-btns {
+  display: none; /* shown via JS on touch devices during gameplay */
+  position: absolute;
+  bottom: 30px;
+  left: 0;
+  right: 0;
+  justify-content: space-between;
+  padding: 0 60px;
+  pointer-events: none;
+}
+
+.mobile-jump-btn {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: rgba(0, 245, 255, 0.12);
+  border: 2px solid rgba(0, 245, 255, 0.4);
+  color: rgba(0, 245, 255, 0.8);
+  font-size: 1.6rem;
+  cursor: pointer;
+  pointer-events: all;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.1s, transform 0.1s;
+}
+
+.mobile-jump-btn:active {
+  background: rgba(0, 245, 255, 0.3);
+  transform: scale(0.92);
+}
+
 #app {
   position: absolute;
   width: 1350px;
@@ -573,6 +605,115 @@ body {
   box-shadow: 0 0 0 2px rgba(255,255,255,0.4), 0 0 12px rgba(255,255,255,0.5);
   transform: scale(1.1);
 }
+
+/* ── CUSTOMIZE STEP WIZARD ────────────────────────────────── */
+.customize-step-bar {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.customize-step-pill {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: rgba(255,255,255,0.45);
+  border-radius: 20px;
+  padding: 7px 28px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+  pointer-events: all;
+}
+
+.customize-step-pill.active {
+  background: rgba(255,215,0,0.15);
+  border-color: #FFD700;
+  color: #FFD700;
+  box-shadow: 0 0 12px rgba(255,215,0,0.25);
+}
+
+.customize-step-content {
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* LOOK step: avatar left, color rows right */
+.look-layout {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  justify-content: center;
+}
+
+.customize-avatar-large {
+  width: 110px;
+  height: 124px;
+  flex-shrink: 0;
+}
+
+.color-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+
+.color-row-compact {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.color-row-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.4);
+  letter-spacing: 2px;
+  width: 34px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* BUILD step: avatar left, stats right */
+.build-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+  justify-content: center;
+}
+
+.customize-avatar-small {
+  width: 80px;
+  height: 90px;
+  flex-shrink: 0;
+  margin-top: 8px;
+}
+
+/* Step prev/next navigation */
+.customize-step-nav {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 18px;
+  padding: 0 4px;
+}
+
+.step-nav-btn {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.35);
+  font-size: 0.75rem;
+  letter-spacing: 2px;
+  cursor: pointer;
+  padding: 8px 0;
+  pointer-events: all;
+  transition: color 0.15s;
+}
+
+.step-nav-btn:hover { color: rgba(255,255,255,0.7); }
 
 /* ── STATS SCREEN ─────────────────────────────────────────── */
 .stats-card {

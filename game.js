@@ -219,7 +219,8 @@ let botServeDelay = 0;
 let tournamentData = null;
 
 // ── Customize tab (for local/tournament player-by-player) ─────
-let customizeTab = 1;
+let customizeTab  = 1;
+let customizeStep = 0; // 0 = LOOK (colors), 1 = BUILD (stats)
 
 // ── Entity factories ─────────────────────────────────────────
 function makePlayer(side) {
@@ -259,6 +260,8 @@ function resetRound() {
   ball = makeBall();
   particles = [];
   if (botMode) botServeDelay = 60 + Math.random() * 90;
+  touchMove.p1 = 0; touchMove.p2 = 0;
+  activeTouches.clear();
 }
 
 function resetGame() {
@@ -371,7 +374,6 @@ canvas.addEventListener('touchstart', e => {
   for (const t of e.changedTouches) {
     const player = touchPlayerFor(t.clientX);
     activeTouches.set(t.identifier, { player, startX: t.clientX, moved: false });
-    doTouchJump(player);
   }
 }, { passive: false });
 
@@ -388,8 +390,7 @@ canvas.addEventListener('touchmove', e => {
 }, { passive: false });
 
 function touchEndOrCancel(e) {
-  if (state !== 'playing') return;
-  e.preventDefault();
+  // Always clear movement state regardless of game state to prevent stuck movement
   for (const t of e.changedTouches) {
     const info = activeTouches.get(t.identifier);
     if (!info) continue;
@@ -397,9 +398,33 @@ function touchEndOrCancel(e) {
     const stillActive = [...activeTouches.values()].some(i => i.player === info.player);
     if (!stillActive) touchMove[info.player] = 0;
   }
+  if (state === 'playing') e.preventDefault();
 }
 canvas.addEventListener('touchend',    touchEndOrCancel, { passive: false });
 canvas.addEventListener('touchcancel', touchEndOrCancel, { passive: false });
+
+// Jump buttons for mobile
+const jumpBtnsEl = document.getElementById('mobile-jump-btns');
+function isTouchDevice() { return 'ontouchstart' in window || navigator.maxTouchPoints > 0; }
+
+function updateJumpBtns() {
+  if (!jumpBtnsEl) return;
+  const show = isTouchDevice() && state === 'playing';
+  jumpBtnsEl.style.display = show ? 'flex' : 'none';
+  // In single-player modes (bot/online) hide P2 button
+  const p2btn = document.getElementById('jump-btn-p2');
+  if (p2btn) p2btn.style.visibility = (botMode || onlineMode) ? 'hidden' : 'visible';
+}
+
+document.getElementById('jump-btn-p1')?.addEventListener('touchstart', e => {
+  e.preventDefault(); e.stopPropagation();
+  doTouchJump('p1');
+}, { passive: false });
+
+document.getElementById('jump-btn-p2')?.addEventListener('touchstart', e => {
+  e.preventDefault(); e.stopPropagation();
+  doTouchJump('p2');
+}, { passive: false });
 
 // Show touch hint briefly when a touch game starts on a touch device
 let touchHintTimer = null;
@@ -562,11 +587,13 @@ function startGame() {
   showScreen('game');
   updateHUD();
   ensureMusic();
+  updateJumpBtns();
   showTouchHint();
 }
 
 // ── Customize screen ─────────────────────────────────────────
 function openCustomize() {
+  customizeStep = 0;
   renderCustomize();
   showScreen('customize');
 }
@@ -575,15 +602,13 @@ function renderCustomize() {
   const panelsEl = document.getElementById('customize-panels');
   panelsEl.innerHTML = '';
 
-  // Determine which players to show
-  // Online guest → only P2 | Online host/Bot/Tournament → only P1 | Local → tab between P1/P2
   const isOnlineGuest = onlineMode === 'guest';
   const isOnlineHost  = onlineMode === 'host';
   const isTournament  = customizeOrigin === 'tournament';
   const useTabs = !onlineMode && !botMode && !isTournament;
   const playersToShow = isOnlineGuest ? [2] : (isOnlineHost || botMode || isTournament) ? [1] : [customizeTab];
 
-  // Tab bar for local mode
+  // ── Player tabs (local 2-player only) ───────────────────────
   if (useTabs) {
     const tabBar = document.createElement('div');
     tabBar.className = 'customize-tabs';
@@ -591,83 +616,127 @@ function renderCustomize() {
       const btn = document.createElement('button');
       btn.className = 'customize-tab-btn' + (customizeTab === n ? ' active' : '');
       btn.textContent = `PLAYER ${n}`;
-      btn.addEventListener('click', () => { customizeTab = n; renderCustomize(); });
+      btn.addEventListener('click', () => { customizeTab = n; customizeStep = 0; renderCustomize(); });
       tabBar.appendChild(btn);
     });
     panelsEl.appendChild(tabBar);
   }
 
+  // ── Step pills: LOOK / BUILD ─────────────────────────────────
+  const stepBar = document.createElement('div');
+  stepBar.className = 'customize-step-bar';
+  [['LOOK', 0], ['BUILD', 1]].forEach(([label, idx]) => {
+    const pill = document.createElement('button');
+    pill.className = 'customize-step-pill' + (customizeStep === idx ? ' active' : '');
+    pill.textContent = label;
+    pill.addEventListener('click', () => { customizeStep = idx; renderCustomize(); });
+    stepBar.appendChild(pill);
+  });
+  panelsEl.appendChild(stepBar);
+
+  // ── Step content ─────────────────────────────────────────────
   playersToShow.forEach(playerNum => {
     const pKey = `p${playerNum}`;
     const panel = document.createElement('div');
-    panel.className = `customize-panel ${pKey}-panel`;
+    panel.className = 'customize-step-content';
     panel.id = `customize-panel-${pKey}`;
 
-    const title = (isOnlineGuest || isOnlineHost || botMode)
-      ? 'YOUR PLAYER'
-      : (playerNum === 1 ? 'PLAYER 1' : 'PLAYER 2');
-
-    panel.innerHTML = `
-      <h3>${title}</h3>
-      <canvas class="customize-avatar" id="avatar-${pKey}" width="80" height="90"></canvas>
-      <div class="color-section">
-        <div class="color-section-label">Skin Color</div>
-        <div class="swatch-row" id="${pKey}-skin-swatches"></div>
-      </div>
-      <div class="color-section">
-        <div class="color-section-label">Hair Color</div>
-        <div class="swatch-row" id="${pKey}-hair-swatches"></div>
-      </div>
-      <div class="color-section">
-        <div class="color-section-label">Outfit Color</div>
-        <div class="swatch-row" id="${pKey}-outfit-swatches"></div>
-      </div>
-      <div class="stat-builder">
-        <div class="stat-builder-header">
-          <span class="color-section-label">STATS BUILD</span>
-          <span class="stat-pool" id="${pKey}-pool"></span>
-        </div>
-        ${['speed','power','jump'].map(s => `
-        <div class="stat-row-ui">
-          <span class="stat-label-ui">${s === 'speed' ? 'SPD' : s === 'power' ? 'PWR' : 'JMP'}</span>
-          <button class="stat-btn stat-btn-minus" data-p="${pKey}" data-s="${s}">−</button>
-          <div class="stat-bar-track"><div class="stat-bar-fill" id="${pKey}-${s}-bar"></div></div>
-          <button class="stat-btn stat-btn-plus" data-p="${pKey}" data-s="${s}">+</button>
-          <span class="stat-val-ui" id="${pKey}-${s}-val"></span>
-        </div>`).join('')}
-      </div>
-    `;
-    // Controls picker only for your own panel in online mode
-    const isMyPanel = (onlineMode === 'host' && playerNum === 1) || (onlineMode === 'guest' && playerNum === 2);
-    if (onlineMode && isMyPanel) {
-      const ctrlDiv = document.createElement('div');
-      ctrlDiv.className = 'controls-picker';
-      ctrlDiv.innerHTML = `
-        <div class="color-section-label" style="margin-bottom:8px">CONTROLS</div>
-        <div style="display:flex;gap:8px">
-          <button class="ctrl-btn${onlineControls === 'wasd' ? ' selected' : ''}" data-scheme="wasd">WASD</button>
-          <button class="ctrl-btn${onlineControls === 'arrows' ? ' selected' : ''}" data-scheme="arrows">ARROWS</button>
+    if (customizeStep === 0) {
+      // LOOK: big avatar + color swatches
+      panel.innerHTML = `
+        <div class="look-layout">
+          <canvas class="customize-avatar-large" id="avatar-${pKey}" width="110" height="124"></canvas>
+          <div class="color-rows">
+            <div class="color-row-compact">
+              <span class="color-row-label">SKIN</span>
+              <div class="swatch-row" id="${pKey}-skin-swatches"></div>
+            </div>
+            <div class="color-row-compact">
+              <span class="color-row-label">HAIR</span>
+              <div class="swatch-row" id="${pKey}-hair-swatches"></div>
+            </div>
+            <div class="color-row-compact">
+              <span class="color-row-label">KIT</span>
+              <div class="swatch-row" id="${pKey}-outfit-swatches"></div>
+            </div>
+          </div>
         </div>
       `;
-      panel.appendChild(ctrlDiv);
-      ctrlDiv.querySelectorAll('.ctrl-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          onlineControls = btn.dataset.scheme;
-          saveOnlineControls();
-          ctrlDiv.querySelectorAll('.ctrl-btn').forEach(b => b.classList.toggle('selected', b.dataset.scheme === onlineControls));
+    } else {
+      // BUILD: small avatar + stat sliders + optional controls
+      const isMyPanel = (onlineMode === 'host' && playerNum === 1) || (onlineMode === 'guest' && playerNum === 2);
+      const ctrlHtml = (onlineMode && isMyPanel) ? `
+        <div class="controls-picker" style="margin-top:14px">
+          <div class="color-section-label" style="margin-bottom:8px">CONTROLS</div>
+          <div style="display:flex;gap:8px">
+            <button class="ctrl-btn${onlineControls === 'wasd'   ? ' selected' : ''}" data-scheme="wasd">WASD</button>
+            <button class="ctrl-btn${onlineControls === 'arrows' ? ' selected' : ''}" data-scheme="arrows">ARROWS</button>
+          </div>
+        </div>` : '';
+
+      panel.innerHTML = `
+        <div class="build-layout">
+          <canvas class="customize-avatar-small" id="avatar-${pKey}" width="80" height="90"></canvas>
+          <div class="stat-builder">
+            <div class="stat-builder-header">
+              <span class="color-section-label">STATS</span>
+              <span class="stat-pool" id="${pKey}-pool"></span>
+            </div>
+            ${['speed','power','jump'].map(s => `
+            <div class="stat-row-ui">
+              <span class="stat-label-ui">${s === 'speed' ? 'SPD' : s === 'power' ? 'PWR' : 'JMP'}</span>
+              <button class="stat-btn stat-btn-minus" data-p="${pKey}" data-s="${s}">−</button>
+              <div class="stat-bar-track"><div class="stat-bar-fill" id="${pKey}-${s}-bar"></div></div>
+              <button class="stat-btn stat-btn-plus" data-p="${pKey}" data-s="${s}">+</button>
+              <span class="stat-val-ui" id="${pKey}-${s}-val"></span>
+            </div>`).join('')}
+            ${ctrlHtml}
+          </div>
+        </div>
+      `;
+
+      if (onlineMode && isMyPanel) {
+        panel.querySelectorAll('.ctrl-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            onlineControls = btn.dataset.scheme;
+            saveOnlineControls();
+            panel.querySelectorAll('.ctrl-btn').forEach(b => b.classList.toggle('selected', b.dataset.scheme === onlineControls));
+          });
         });
-      });
+      }
+      setupStatButtons(pKey);
     }
 
     panelsEl.appendChild(panel);
 
-    buildSwatchRow(`${pKey}-skin-swatches`,   SKIN_PRESETS,   pKey, 'skin');
-    buildSwatchRow(`${pKey}-hair-swatches`,   HAIR_PRESETS,   pKey, 'hair');
-    buildSwatchRow(`${pKey}-outfit-swatches`, OUTFIT_PRESETS, pKey, 'body');
+    if (customizeStep === 0) {
+      buildSwatchRow(`${pKey}-skin-swatches`,   SKIN_PRESETS,   pKey, 'skin');
+      buildSwatchRow(`${pKey}-hair-swatches`,   HAIR_PRESETS,   pKey, 'hair');
+      buildSwatchRow(`${pKey}-outfit-swatches`, OUTFIT_PRESETS, pKey, 'body');
+    }
     drawAvatarPreview(pKey);
     updateStatDisplay(pKey);
-    setupStatButtons(pKey);
   });
+
+  // ── Step navigation arrows ───────────────────────────────────
+  const nav = document.createElement('div');
+  nav.className = 'customize-step-nav';
+
+  const prevBtn = document.createElement('button');
+  prevBtn.className = 'step-nav-btn';
+  prevBtn.textContent = '← LOOK';
+  prevBtn.style.visibility = customizeStep === 0 ? 'hidden' : 'visible';
+  prevBtn.addEventListener('click', () => { customizeStep = 0; renderCustomize(); });
+
+  const nextBtn = document.createElement('button');
+  nextBtn.className = 'step-nav-btn';
+  nextBtn.textContent = 'BUILD →';
+  nextBtn.style.visibility = customizeStep === 1 ? 'hidden' : 'visible';
+  nextBtn.addEventListener('click', () => { customizeStep = 1; renderCustomize(); });
+
+  nav.appendChild(prevBtn);
+  nav.appendChild(nextBtn);
+  panelsEl.appendChild(nav);
 }
 
 function updateStatDisplay(pKey) {
@@ -1158,6 +1227,7 @@ function update() {
       state = 'playing';
       showScreen('game');
       resetRound();
+      updateJumpBtns();
     }
     return;
   }
@@ -1395,6 +1465,7 @@ function awardPoint(winner) {
 
 function showPointScreen(winner, setEnd) {
   state = 'point';
+  updateJumpBtns();
   pointWinner = winner;
   const color = winner === 1 ? '#6EA8FF' : '#FF7070';
   const msg = setEnd
@@ -1411,6 +1482,7 @@ function showPointScreen(winner, setEnd) {
 
 function endGame(winner) {
   state = 'gameover';
+  updateJumpBtns();
   AudioEngine.sfxGameOver();
 
   // Record stats locally — both local and online games count
