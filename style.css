@@ -175,6 +175,20 @@ body {
   margin-bottom: 44px;
 }
 
+.logo-presents {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.48rem;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: #ff2d78;
+  text-transform: uppercase;
+  text-shadow:
+    0 0 8px rgba(255, 45, 120, 1),
+    0 0 20px rgba(255, 45, 120, 0.6);
+  margin-bottom: 6px;
+  opacity: 0.9;
+}
+
 .logo-top {
   font-family: 'Orbitron', sans-serif;
   font-size: 0.6rem;
@@ -966,10 +980,22 @@ body {
 }
 
 /* ── PERSISTENT MUTE BUTTON ──────────────────────────────── */
+#version-badge {
+  position: absolute;
+  bottom: 14px;
+  left: 16px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.55rem;
+  letter-spacing: 2px;
+  color: rgba(255, 255, 255, 0.2);
+  pointer-events: none;
+  z-index: 200;
+}
+
 #btn-mute {
   position: absolute;
   bottom: 12px;
-  right: 12px;
+  right: 40px;
   background: rgba(0, 0, 0, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: #fff;
