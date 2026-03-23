@@ -361,11 +361,12 @@ function doTouchJump(player) {
   }
 }
 
-const appEl = document.getElementById('app');
+// Ensure music on any touch (passive — never blocks buttons)
+document.addEventListener('touchstart', () => ensureMusic(), { passive: true });
 
-appEl.addEventListener('touchstart', e => {
-  ensureMusic();
-  if (state !== 'playing') return; // let menu buttons work normally
+// Game touch controls live on the canvas only — menu buttons are never affected
+canvas.addEventListener('touchstart', e => {
+  if (state !== 'playing') return;
   e.preventDefault();
   for (const t of e.changedTouches) {
     const player = touchPlayerFor(t.clientX);
@@ -374,7 +375,7 @@ appEl.addEventListener('touchstart', e => {
   }
 }, { passive: false });
 
-appEl.addEventListener('touchmove', e => {
+canvas.addEventListener('touchmove', e => {
   if (state !== 'playing') return;
   e.preventDefault();
   for (const t of e.changedTouches) {
@@ -393,13 +394,12 @@ function touchEndOrCancel(e) {
     const info = activeTouches.get(t.identifier);
     if (!info) continue;
     activeTouches.delete(t.identifier);
-    // Only stop movement if no other finger is still active for this player
     const stillActive = [...activeTouches.values()].some(i => i.player === info.player);
     if (!stillActive) touchMove[info.player] = 0;
   }
 }
-appEl.addEventListener('touchend',    touchEndOrCancel, { passive: false });
-appEl.addEventListener('touchcancel', touchEndOrCancel, { passive: false });
+canvas.addEventListener('touchend',    touchEndOrCancel, { passive: false });
+canvas.addEventListener('touchcancel', touchEndOrCancel, { passive: false });
 
 // Show touch hint briefly when a touch game starts on a touch device
 let touchHintTimer = null;
