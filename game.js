@@ -364,8 +364,9 @@ function doTouchJump(player) {
 const appEl = document.getElementById('app');
 
 appEl.addEventListener('touchstart', e => {
-  e.preventDefault();
   ensureMusic();
+  if (state !== 'playing') return; // let menu buttons work normally
+  e.preventDefault();
   for (const t of e.changedTouches) {
     const player = touchPlayerFor(t.clientX);
     activeTouches.set(t.identifier, { player, startX: t.clientX, moved: false });
@@ -374,6 +375,7 @@ appEl.addEventListener('touchstart', e => {
 }, { passive: false });
 
 appEl.addEventListener('touchmove', e => {
+  if (state !== 'playing') return;
   e.preventDefault();
   for (const t of e.changedTouches) {
     const info = activeTouches.get(t.identifier);
@@ -385,6 +387,7 @@ appEl.addEventListener('touchmove', e => {
 }, { passive: false });
 
 function touchEndOrCancel(e) {
+  if (state !== 'playing') return;
   e.preventDefault();
   for (const t of e.changedTouches) {
     const info = activeTouches.get(t.identifier);

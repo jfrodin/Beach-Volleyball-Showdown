@@ -9,7 +9,6 @@ body {
   font-family: 'Segoe UI', system-ui, sans-serif;
   overflow: hidden;
   margin: 0;
-  touch-action: none;
   -webkit-user-select: none;
   user-select: none;
 }
