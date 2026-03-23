@@ -208,14 +208,19 @@ const AudioEngine = (() => {
   return {
     start() {
       init();
-      if (playing) return;
+      // Fade volume back in
+      master.gain.setTargetAtTime(0.38, ctx.currentTime, 0.08);
       playing = true;
-      nextBarTime = ctx.currentTime + 0.05;
-      barCount    = 0;
-      scheduler();
+      // Start scheduler only if not already running
+      if (!schedTimer) {
+        nextBarTime = ctx.currentTime + 0.05;
+        barCount    = 0;
+        scheduler();
+      }
     },
     stop() {
-      clearTimeout(schedTimer);
+      // Fade out instead of killing the scheduler — prevents double-music on resume
+      if (master) master.gain.setTargetAtTime(0, ctx.currentTime, 0.08);
       playing = false;
     },
     toggle() { playing ? this.stop() : this.start(); },

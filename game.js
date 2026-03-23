@@ -449,7 +449,10 @@ function showTouchHint() {
 // ── Button wiring ─────────────────────────────────────────────
 
 // Start music on first interaction (browser requires user gesture)
+let musicMuted = false;
+
 function ensureMusic() {
+  if (musicMuted) return; // user explicitly muted — don't restart
   if (!AudioEngine.isPlaying()) AudioEngine.start();
 }
 
@@ -517,8 +520,13 @@ document.getElementById('btn-reset-stats').addEventListener('click', () => {
 });
 
 document.getElementById('btn-mute').addEventListener('click', () => {
-  AudioEngine.toggle();
-  document.getElementById('btn-mute').textContent = AudioEngine.isPlaying() ? '🔊' : '🔇';
+  musicMuted = !musicMuted;
+  if (musicMuted) {
+    AudioEngine.stop();
+  } else {
+    AudioEngine.start();
+  }
+  document.getElementById('btn-mute').textContent = musicMuted ? '🔇' : '🔊';
 });
 
 // Customize back button
