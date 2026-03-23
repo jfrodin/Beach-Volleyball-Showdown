@@ -1985,16 +1985,16 @@ function drawConfetti() {
 function drawServePrompt() {
   if (ball.served) return;
   const server = servingPlayer === 1 ? p1 : p2;
-  const key = servingPlayer === 1 ? 'W' : '↑';
   const col = servingPlayer === 1 ? '#6EA8FF' : '#FF7070';
+  const pulse = 0.5 + Math.sin(bgTime * 5) * 0.5;
+  const arrowY = server.y - PLAYER_R - BALL_R - 28 - Math.sin(bgTime * 4) * 5;
 
   ctx.save();
-  const pulse = 0.7 + Math.sin(bgTime * 5) * 0.3;
   ctx.globalAlpha = pulse;
   ctx.fillStyle = col;
-  ctx.font = 'bold 13px sans-serif';
+  ctx.font = 'bold 18px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(`Press ${key} to serve`, server.x, server.y - PLAYER_R - BALL_R - 20);
+  ctx.fillText('▲', server.x, arrowY);
   ctx.restore();
 }
 
