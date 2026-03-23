@@ -2,8 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Beach Volleyball Showdown</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="BVS">
+  <meta name="theme-color" content="#05001a">
+  <link rel="apple-touch-icon" href="/icon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
@@ -13,6 +19,10 @@
   <div id="app">
     <canvas id="gameCanvas" width="1350" height="600"></canvas>
     <button id="btn-mute" title="Toggle Music">🔊</button>
+    <div id="touch-hint">
+      <div class="touch-hint-side">← DRAG →<br>TAP = JUMP</div>
+      <div class="touch-hint-side">← DRAG →<br>TAP = JUMP</div>
+    </div>
     <div id="ui-overlay">
       <div id="screen-start" class="screen active">
         <div class="title-card">
@@ -135,6 +145,13 @@
       </div>
     </div>
   </div>
+  <!-- Portrait rotate prompt (hidden in landscape, shown in portrait) -->
+  <div id="rotate-overlay">
+    <div class="rotate-icon">🏐</div>
+    <div class="rotate-text">Rotate your device</div>
+    <div class="rotate-sub">This game is best in landscape</div>
+  </div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="audio.js"></script>
   <script src="game.js"></script>

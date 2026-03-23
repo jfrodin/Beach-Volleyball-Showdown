@@ -9,6 +9,72 @@ body {
   font-family: 'Segoe UI', system-ui, sans-serif;
   overflow: hidden;
   margin: 0;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ── ROTATE OVERLAY ───────────────────────────────────────── */
+#rotate-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: #05001a;
+  z-index: 99999;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+@media (orientation: portrait) {
+  #rotate-overlay { display: flex; }
+}
+
+.rotate-icon {
+  font-size: 4rem;
+  animation: spin90 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes spin90 {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(90deg); }
+}
+
+.rotate-text {
+  color: #00f5ff;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.4rem;
+  letter-spacing: 3px;
+}
+
+.rotate-sub {
+  color: rgba(255,255,255,0.4);
+  font-size: 0.85rem;
+  letter-spacing: 2px;
+}
+
+/* ── TOUCH HINT (shown briefly at game start on touch devices) */
+#touch-hint {
+  position: absolute;
+  bottom: 28px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 40px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.5s;
+}
+
+#touch-hint.visible { opacity: 1; }
+
+.touch-hint-side {
+  color: rgba(255,255,255,0.35);
+  font-size: 0.75rem;
+  letter-spacing: 2px;
+  text-align: center;
 }
 
 #app {

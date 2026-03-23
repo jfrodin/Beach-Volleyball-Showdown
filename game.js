@@ -266,6 +266,8 @@ function resetGame() {
   setsP1 = 0;  setsP2 = 0;
   currentSet = 1;
   servingPlayer = 1;
+  touchMove.p1 = 0; touchMove.p2 = 0;
+  activeTouches.clear();
   resetRound();
   updateHUD();
 }
@@ -332,6 +334,89 @@ document.addEventListener('keydown', e => {
   }
 });
 document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// ── Touch controls ────────────────────────────────────────────
+// Drag left/right = move, tap (no/small drag) = jump
+// In 2-player local: left half = P1, right half = P2
+// In bot/online: full screen = P1
+
+const touchMove = { p1: 0, p2: 0 }; // -1 left, 0 still, 1 right
+const activeTouches = new Map();     // touchId → { player, startX, moved }
+
+const TOUCH_DEAD = 20; // px drag threshold before counting as movement
+
+function touchPlayerFor(clientX) {
+  if (botMode || onlineMode) return 'p1';
+  return clientX < window.innerWidth / 2 ? 'p1' : 'p2';
+}
+
+function doTouchJump(player) {
+  if (state !== 'playing') return;
+  if (player === 'p1') {
+    if (p1.onGround) { p1.vy = getPlayerJump('p1'); p1.onGround = false; }
+    if (!ball.served && servingPlayer === 1) serveBall();
+  } else if (player === 'p2' && !botMode && onlineMode !== 'guest') {
+    if (p2.onGround) { p2.vy = getPlayerJump('p2'); p2.onGround = false; }
+    if (!ball.served && servingPlayer === 2) serveBall();
+  }
+}
+
+const appEl = document.getElementById('app');
+
+appEl.addEventListener('touchstart', e => {
+  e.preventDefault();
+  ensureMusic();
+  for (const t of e.changedTouches) {
+    const player = touchPlayerFor(t.clientX);
+    activeTouches.set(t.identifier, { player, startX: t.clientX, moved: false });
+    doTouchJump(player);
+  }
+}, { passive: false });
+
+appEl.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    const info = activeTouches.get(t.identifier);
+    if (!info) continue;
+    const dx = t.clientX - info.startX;
+    if (Math.abs(dx) > TOUCH_DEAD) info.moved = true;
+    touchMove[info.player] = dx > TOUCH_DEAD ? 1 : dx < -TOUCH_DEAD ? -1 : 0;
+  }
+}, { passive: false });
+
+function touchEndOrCancel(e) {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    const info = activeTouches.get(t.identifier);
+    if (!info) continue;
+    activeTouches.delete(t.identifier);
+    // Only stop movement if no other finger is still active for this player
+    const stillActive = [...activeTouches.values()].some(i => i.player === info.player);
+    if (!stillActive) touchMove[info.player] = 0;
+  }
+}
+appEl.addEventListener('touchend',    touchEndOrCancel, { passive: false });
+appEl.addEventListener('touchcancel', touchEndOrCancel, { passive: false });
+
+// Show touch hint briefly when a touch game starts on a touch device
+let touchHintTimer = null;
+function showTouchHint() {
+  if (!('ontouchstart' in window)) return;
+  const el = document.getElementById('touch-hint');
+  if (!el) return;
+  // Single player modes only show left hint
+  const sides = el.querySelectorAll('.touch-hint-side');
+  if (botMode || onlineMode) {
+    sides[0].style.visibility = 'visible';
+    sides[1].style.visibility = 'hidden';
+  } else {
+    sides[0].style.visibility = 'visible';
+    sides[1].style.visibility = 'visible';
+  }
+  el.classList.add('visible');
+  clearTimeout(touchHintTimer);
+  touchHintTimer = setTimeout(() => el.classList.remove('visible'), 3000);
+}
 
 // ── Button wiring ─────────────────────────────────────────────
 
@@ -474,6 +559,7 @@ function startGame() {
   showScreen('game');
   updateHUD();
   ensureMusic();
+  showTouchHint();
 }
 
 // ── Customize screen ─────────────────────────────────────────
@@ -1105,8 +1191,8 @@ function update() {
   const p1LeftKey  = (onlineMode === 'host' && onlineControls === 'arrows') ? 'ArrowLeft'  : 'KeyA';
   const p1RightKey = (onlineMode === 'host' && onlineControls === 'arrows') ? 'ArrowRight' : 'KeyD';
   p1.vx = 0;
-  if (keys[p1LeftKey]  || gp1?.left)  { p1.vx = -getPlayerSpeed('p1'); p1.facing = -1; }
-  if (keys[p1RightKey] || gp1?.right) { p1.vx =  getPlayerSpeed('p1'); p1.facing =  1; }
+  if (keys[p1LeftKey]  || gp1?.left  || touchMove.p1 < 0) { p1.vx = -getPlayerSpeed('p1'); p1.facing = -1; }
+  if (keys[p1RightKey] || gp1?.right || touchMove.p1 > 0) { p1.vx =  getPlayerSpeed('p1'); p1.facing =  1; }
   // Gamepad jump/serve for P1 (keyboard jump handled in keydown)
   if (gp1?.jump && !gamepadPrev[0].jump) {
     if (p1.onGround) { p1.vy = getPlayerJump('p1'); p1.onGround = false; }
@@ -1126,8 +1212,8 @@ function update() {
     const gp2 = (!onlineMode) ? readPad(1) : null;
     const p2k = onlineMode === 'host' ? guestKeys : keys;
     p2.vx = 0;
-    if (p2k['ArrowLeft']  || gp2?.left)  { p2.vx = -getPlayerSpeed('p2'); p2.facing = -1; }
-    if (p2k['ArrowRight'] || gp2?.right) { p2.vx =  getPlayerSpeed('p2'); p2.facing =  1; }
+    if (p2k['ArrowLeft']  || gp2?.left  || touchMove.p2 < 0) { p2.vx = -getPlayerSpeed('p2'); p2.facing = -1; }
+    if (p2k['ArrowRight'] || gp2?.right || touchMove.p2 > 0) { p2.vx =  getPlayerSpeed('p2'); p2.facing =  1; }
     // Gamepad jump/serve for P2
     if (gp2?.jump && !gamepadPrev[1].jump) {
       if (p2.onGround) { p2.vy = getPlayerJump('p2'); p2.onGround = false; }
@@ -2050,13 +2136,17 @@ document.getElementById('btn-join-room').addEventListener('click', () => {
 
 // ── Responsive scaling ────────────────────────────────────────
 function scaleGame() {
-  const scale = Math.min(window.innerWidth / 1350, window.innerHeight / 600);
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const scale = Math.min(vw / 1350, vh / 600);
   const app = document.getElementById('app');
   app.style.transform = `scale(${scale})`;
-  app.style.left = Math.round((window.innerWidth  - 1350 * scale) / 2) + 'px';
-  app.style.top  = Math.round((window.innerHeight - 600  * scale) / 2) + 'px';
+  app.style.left = Math.round((vw  - 1350 * scale) / 2) + 'px';
+  app.style.top  = Math.round((vh - 600  * scale) / 2) + 'px';
 }
 window.addEventListener('resize', scaleGame);
+// Also re-scale when device orientation changes (mobile)
+window.addEventListener('orientationchange', () => setTimeout(scaleGame, 150));
 scaleGame();
 
 // ── Boot ──────────────────────────────────────────────────────

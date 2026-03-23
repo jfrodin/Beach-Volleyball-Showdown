@@ -1,0 +1,13 @@
+{
+  "name": "Beach Volleyball Showdown",
+  "short_name": "BVS",
+  "description": "Fast-paced 2-player beach volleyball action",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#05001a",
+  "theme_color": "#05001a",
+  "start_url": "/",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
