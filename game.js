@@ -173,6 +173,11 @@ let onlineMode = null;  // null | 'host' | 'guest'
 let netSocket  = null;
 const guestKeys = {};   // host mirrors guest's held keys here
 
+// ── Online Tournament ─────────────────────────────────────────
+let otMode = false;     // true while in an online tournament (between and during matches)
+let otMyName = '';
+let touchJumpPending = false; // for mobile guest jump relay
+
 // ── Online control scheme (per device) ───────────────────────
 let onlineControls = localStorage.getItem('online_controls') || 'wasd';
 function saveOnlineControls() { localStorage.setItem('online_controls', onlineControls); }
@@ -354,6 +359,11 @@ function touchPlayerFor() {
 
 function doTouchJump(player) {
   if (state !== 'playing') return;
+  // Online guest: flag jump so sendKeys loop can relay it to host
+  if (onlineMode === 'guest' && player === 'p1') {
+    touchJumpPending = true;
+    return;
+  }
   if (player === 'p1') {
     if (p1.onGround) { p1.vy = getPlayerJump('p1'); p1.onGround = false; }
     if (!ball.served && servingPlayer === 1) serveBall();
@@ -1498,9 +1508,22 @@ function endGame(winner) {
     recordGameStats(winner);
   }
 
-  // Tournament: advance bracket instead of normal gameover screen
+  // Local tournament: advance bracket
   if (tournamentData) {
     finishTournamentMatch(winner);
+    return;
+  }
+
+  // Online tournament: host reports result, both players return to bracket
+  if (otMode && onlineMode === 'host' && netSocket) {
+    netSocket.emit('ot-result', { winner: winner === 1 ? 'p1' : 'p2' });
+    onlineMode = null;
+    // bracket screen will be pushed via ot-state event
+    return;
+  }
+  if (otMode && onlineMode === 'guest') {
+    onlineMode = null;
+    // bracket will come from server via ot-state
     return;
   }
 
@@ -2138,10 +2161,11 @@ function initOnlineMode(role) {
       const rk = onlineControls === 'wasd' ? 'KeyD'    : 'ArrowRight';
       const uk = onlineControls === 'wasd' ? 'KeyW'    : 'ArrowUp';
       const gp = readPad(0); // Guest uses gamepad 0 on their own machine
-      const up = !!keys[uk] || (gp?.jump ?? false);
+      const up = !!keys[uk] || (gp?.jump ?? false) || touchJumpPending;
+      touchJumpPending = false;
       netSocket.emit('keys', {
-        ArrowLeft:  !!keys[lk] || (gp?.left  ?? false),
-        ArrowRight: !!keys[rk] || (gp?.right ?? false),
+        ArrowLeft:  !!keys[lk] || (gp?.left  ?? false) || touchMove.p1 < 0,
+        ArrowRight: !!keys[rk] || (gp?.right ?? false) || touchMove.p1 > 0,
         ArrowUp:    up,
         _upPrev:    prevUp,
       });
@@ -2213,6 +2237,173 @@ document.getElementById('btn-join-room').addEventListener('click', () => {
   });
   sock.once('join-error', ({ msg }) => {
     document.getElementById('online-status').textContent = `Error: ${msg}`;
+  });
+});
+
+// ── Online Tournament UI ──────────────────────────────────────
+
+function otShowScreen(html) {
+  document.getElementById('ot-content').innerHTML = html;
+  showScreen('ot');
+}
+
+function renderOTLobby(data, isHost) {
+  const playerList = data.players.map((n, i) =>
+    `<div class="ot-player-row">${i === 0 ? '👑 ' : ''}${n}</div>`).join('');
+  otShowScreen(`
+    <h2 style="color:#FFD700;letter-spacing:4px;margin-bottom:6px">ONLINE TOURNAMENT</h2>
+    <p style="color:#00f5ff;font-size:1.3rem;letter-spacing:6px;margin-bottom:20px">${data.code}</p>
+    <div class="ot-player-list">${playerList}</div>
+    <p style="color:rgba(255,255,255,0.35);font-size:0.75rem;letter-spacing:2px;margin:14px 0 20px">
+      ${isHost ? 'Share the code above — then start when everyone\'s in.' : 'Waiting for host to start…'}
+    </p>
+    ${isHost ? `<button id="ot-btn-start" class="btn-primary" style="width:100%;margin-bottom:12px">START TOURNAMENT</button>` : ''}
+    <button id="ot-btn-leave" class="btn-back" style="margin-top:0">← Leave</button>
+  `);
+  document.getElementById('ot-btn-start')?.addEventListener('click', () => {
+    netSocket.emit('ot-start');
+  });
+  document.getElementById('ot-btn-leave')?.addEventListener('click', otLeave);
+}
+
+function renderOTBracket(data) {
+  const names = data.players;
+  const tName = idx => idx === 'BYE' ? 'BYE' : (names[idx] ?? '?');
+  const roundLabel = (ri, total) => {
+    const remaining = total - ri;
+    if (remaining === 1) return 'FINAL';
+    if (remaining === 2) return 'SEMI';
+    if (remaining === 3) return 'QUARTER';
+    return `R${ri + 1}`;
+  };
+
+  let html = `<h2 style="color:#FFD700;letter-spacing:4px;margin-bottom:16px">ONLINE TOURNAMENT</h2>`;
+
+  if (data.phase === 'done') {
+    // Find champion
+    const lastRound = data.bracket[data.bracket.length - 1];
+    const champion = lastRound?.[0]?.winner;
+    html += `<div style="color:#FFD700;font-size:1.4rem;letter-spacing:3px;margin-bottom:16px">🏆 ${tName(champion)} WINS!</div>`;
+  } else {
+    const m = data.bracket[data.currentRound]?.[data.currentMatchIdx];
+    if (m) html += `<div class="ot-next-match">▶ ${tName(m.a)} vs ${tName(m.b)}</div>`;
+  }
+
+  html += `<div class="bracket-rounds">`;
+  (data.bracket || []).forEach((round, ri) => {
+    html += `<div class="bracket-round"><div class="bracket-round-label">${roundLabel(ri, data.bracket.length)}</div>`;
+    round.forEach((m, mi) => {
+      const isActive = data.phase !== 'done' && ri === data.currentRound && mi === data.currentMatchIdx;
+      const wc = idx => m.winner !== null ? (m.winner === idx ? 'winner' : 'loser') : '';
+      html += `<div class="bracket-match${isActive ? ' active' : ''}">
+        <div class="bracket-player ${wc(m.a)}">${tName(m.a)}</div>
+        <div class="bracket-player ${wc(m.b)}">${tName(m.b)}</div>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+  html += `</div>`;
+
+  if (data.phase === 'done') {
+    html += `<button id="ot-btn-leave" class="btn-primary" style="margin-top:20px;width:100%">BACK TO MENU</button>`;
+  } else {
+    html += `<button id="ot-btn-leave" class="btn-back" style="margin-top:14px">← Leave tournament</button>`;
+  }
+
+  otShowScreen(html);
+  document.getElementById('ot-btn-leave')?.addEventListener('click', otLeave);
+}
+
+function renderOTWait(playerA, playerB) {
+  otShowScreen(`
+    <h2 style="color:#FFD700;letter-spacing:4px;margin-bottom:20px">ONLINE TOURNAMENT</h2>
+    <p style="color:rgba(255,255,255,0.5);font-size:0.85rem;letter-spacing:3px;margin-bottom:8px">NOW PLAYING</p>
+    <p style="color:#00f5ff;font-size:1.1rem;letter-spacing:2px;margin-bottom:24px">${playerA} vs ${playerB}</p>
+    <div class="ot-waiting-dots">waiting<span class="dot-anim">...</span></div>
+    <button id="ot-btn-leave" class="btn-back" style="margin-top:24px">← Leave tournament</button>
+  `);
+  document.getElementById('ot-btn-leave')?.addEventListener('click', otLeave);
+}
+
+function otLeave() {
+  otMode = false;
+  onlineMode = null;
+  netSocket = null;
+  showScreen('start');
+}
+
+function initOTHandlers() {
+  netSocket.on('ot-lobby', data => {
+    renderOTLobby(data, data.players[0] === otMyName);
+  });
+  netSocket.on('ot-state', data => {
+    renderOTBracket(data);
+  });
+  netSocket.on('ot-wait', ({ playerA, playerB }) => {
+    renderOTWait(playerA, playerB);
+  });
+  netSocket.on('ot-match-start', ({ role }) => {
+    otMode = true;
+    resetGame();
+    // Reuse existing online match infrastructure
+    if (role === 'host') {
+      initOnlineMode('host');
+      // Skip customize — use saved build
+      customizeOrigin = 'online';
+      startGame();
+    } else {
+      initOnlineMode('guest');
+      customizeOrigin = 'online';
+      // Guest: start sending keys immediately, wait for host game-state
+    }
+  });
+  netSocket.on('ot-player-left', ({ name }) => {
+    // Show brief notification — don't crash
+    console.log(`${name} left the tournament`);
+  });
+  netSocket.on('ot-error', ({ msg }) => {
+    const el = document.getElementById('ot-content');
+    if (el) {
+      const err = document.createElement('p');
+      err.style.cssText = 'color:#ff2d78;margin-top:12px;font-size:0.85rem';
+      err.textContent = msg;
+      el.appendChild(err);
+    }
+  });
+}
+
+document.getElementById('btn-online-tournament').addEventListener('click', () => {
+  ensureMusic();
+  const sock = getSocket();
+  otShowScreen(`
+    <h2 style="color:#FFD700;letter-spacing:4px;margin-bottom:24px">ONLINE TOURNAMENT</h2>
+    <input id="ot-name-input" type="text" maxlength="16" placeholder="Your name"
+      autocomplete="off" style="width:100%;margin-bottom:16px;text-align:center;font-size:1rem" />
+    <button id="ot-btn-create" class="btn-primary" style="width:100%;margin-bottom:12px">CREATE TOURNAMENT</button>
+    <div class="online-divider">— or join with code —</div>
+    <div class="online-join-row" style="margin-top:12px">
+      <input id="ot-code-input" type="text" maxlength="6" placeholder="XXXXXX" autocomplete="off" />
+      <button id="ot-btn-join" class="btn-secondary">JOIN</button>
+    </div>
+    <div id="ot-err" style="color:#ff2d78;font-size:0.8rem;margin-top:10px;min-height:18px"></div>
+    <button id="ot-btn-back" class="btn-back">← Back</button>
+  `);
+  document.getElementById('ot-btn-back').addEventListener('click', () => showScreen('start'));
+  document.getElementById('ot-btn-create').addEventListener('click', () => {
+    const name = document.getElementById('ot-name-input').value.trim() || 'Player';
+    otMyName = name;
+    otMode = true;
+    initOTHandlers();
+    sock.emit('ot-create', { name });
+  });
+  document.getElementById('ot-btn-join').addEventListener('click', () => {
+    const name = document.getElementById('ot-name-input').value.trim() || 'Player';
+    const code = document.getElementById('ot-code-input').value.trim().toUpperCase();
+    if (code.length < 6) { document.getElementById('ot-err').textContent = 'Enter a 6-character code.'; return; }
+    otMyName = name;
+    otMode = true;
+    initOTHandlers();
+    sock.emit('ot-join', { code, name });
   });
 });
 

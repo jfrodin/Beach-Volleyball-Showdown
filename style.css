@@ -854,6 +854,51 @@ body {
   color: #fff;
 }
 
+/* ── ONLINE TOURNAMENT ───────────────────────────────────── */
+.ot-player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.ot-player-row {
+  background: rgba(0,245,255,0.07);
+  border: 1px solid rgba(0,245,255,0.2);
+  border-radius: 8px;
+  padding: 8px 16px;
+  color: #fff;
+  font-size: 0.9rem;
+  letter-spacing: 2px;
+  text-align: left;
+}
+
+.ot-next-match {
+  color: #00f5ff;
+  font-size: 0.95rem;
+  letter-spacing: 2px;
+  margin-bottom: 16px;
+  padding: 10px 16px;
+  background: rgba(0,245,255,0.08);
+  border-radius: 8px;
+  border: 1px solid rgba(0,245,255,0.25);
+}
+
+.ot-waiting-dots {
+  color: rgba(255,255,255,0.45);
+  font-size: 0.9rem;
+  letter-spacing: 3px;
+}
+
+.dot-anim {
+  animation: dotPulse 1.2s infinite;
+}
+
+@keyframes dotPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.2; }
+}
+
 /* ── TOURNAMENT ───────────────────────────────────────────── */
 .tournament-card {
   background: rgba(5, 0, 20, 0.94);
