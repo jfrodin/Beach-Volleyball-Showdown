@@ -348,9 +348,8 @@ const activeTouches = new Map();     // touchId → { player, startX, moved }
 
 const TOUCH_DEAD = 20; // px drag threshold before counting as movement
 
-function touchPlayerFor(clientX) {
-  if (botMode || onlineMode) return 'p1';
-  return clientX < window.innerWidth / 2 ? 'p1' : 'p2';
+function touchPlayerFor() {
+  return 'p1'; // mobile is always single-player (full screen = P1)
 }
 
 function doTouchJump(player) {
@@ -372,7 +371,7 @@ canvas.addEventListener('touchstart', e => {
   if (state !== 'playing') return;
   e.preventDefault();
   for (const t of e.changedTouches) {
-    const player = touchPlayerFor(t.clientX);
+    const player = touchPlayerFor();
     activeTouches.set(t.identifier, { player, startX: t.clientX, moved: false });
   }
 }, { passive: false });
@@ -413,7 +412,7 @@ function updateJumpBtns() {
   jumpBtnsEl.style.display = show ? 'flex' : 'none';
   // In single-player modes (bot/online) hide P2 button
   const p2btn = document.getElementById('jump-btn-p2');
-  if (p2btn) p2btn.style.visibility = (botMode || onlineMode) ? 'hidden' : 'visible';
+  if (p2btn) p2btn.style.visibility = 'hidden'; // mobile is always single-player
 }
 
 document.getElementById('jump-btn-p1')?.addEventListener('touchstart', e => {
@@ -2237,5 +2236,12 @@ loadPlayerColors();
 loadPlayerBuildStats();
 initBgElements();
 resetGame();
+
+// Hide local/tournament on touch devices — mobile is single-player only
+if (isTouchDevice()) {
+  document.getElementById('btn-start').style.display      = 'none';
+  document.getElementById('btn-tournament').style.display = 'none';
+}
+
 showScreen('start');
 gameLoop();
