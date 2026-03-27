@@ -291,6 +291,29 @@ body {
   color: #00f5ff;
 }
 
+/* ── Per-button neon colors ───────────────────────────────── */
+#btn-start          { --c: 0,245,255;   color: #00f5ff;  }   /* cyan */
+#btn-vs-bot         { --c: 0,255,157;   color: #00ff9d;  }   /* green */
+#btn-online         { --c: 179,0,255;   color: #b300ff;  }   /* purple */
+#btn-online-tournament { --c: 255,215,0; color: #FFD700; }   /* gold */
+#btn-tournament     { --c: 255,136,0;   color: #ff8800;  }   /* orange */
+#btn-customize-menu { --c: 255,45,120;  color: #ff2d78;  }   /* pink */
+#btn-stats          { --c: 100,200,255; color: #64c8ff;  }   /* sky blue */
+
+#btn-start, #btn-vs-bot, #btn-online, #btn-online-tournament,
+#btn-tournament, #btn-customize-menu, #btn-stats {
+  background: rgba(var(--c), 0.08);
+  border-color: rgba(var(--c), 0.35) !important;
+}
+
+#btn-start:hover, #btn-vs-bot:hover, #btn-online:hover,
+#btn-online-tournament:hover, #btn-tournament:hover,
+#btn-customize-menu:hover, #btn-stats:hover {
+  background: rgba(var(--c), 0.18);
+  box-shadow: 0 4px 20px rgba(var(--c), 0.25);
+  border-color: rgba(var(--c), 0.6) !important;
+}
+
 /* ── Shared button styles ─────────────────────────────────── */
 .btn-primary {
   background: linear-gradient(135deg, #FF6B35, #FF4500);
