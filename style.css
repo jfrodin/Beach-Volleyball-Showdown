@@ -259,8 +259,7 @@ body {
   pointer-events: all;
 }
 
-.btn-primary.btn-menu,
-.btn-menu:first-child {
+.btn-primary.btn-menu {
   background: linear-gradient(135deg, #ff2d78, #c4005a);
   color: #fff;
   box-shadow: 0 4px 24px rgba(255, 45, 120, 0.45);
