@@ -165,7 +165,7 @@ body {
   background: rgba(5, 0, 20, 0.88);
   border: 1px solid rgba(0, 245, 255, 0.15);
   border-radius: 24px;
-  padding: 52px 64px 44px;
+  padding: 28px 56px 28px;
   text-align: center;
   backdrop-filter: blur(14px);
   box-shadow:
@@ -178,7 +178,7 @@ body {
 
 /* ── Logo ─────────────────────────────────────────────────── */
 .game-logo {
-  margin-bottom: 44px;
+  margin-bottom: 20px;
 }
 
 .logo-presents {
@@ -209,7 +209,7 @@ body {
 
 .logo-main {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: 5rem;
+  font-size: 4rem;
   font-weight: 400;
   letter-spacing: 0px;
   text-transform: uppercase;
@@ -242,13 +242,13 @@ body {
 .start-btn-col {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 7px;
 }
 
 .btn-menu {
   width: 100%;
-  padding: 13px 24px;
-  font-size: 0.95rem;
+  padding: 10px 24px;
+  font-size: 0.88rem;
   font-weight: 700;
   letter-spacing: 4px;
   text-transform: uppercase;
